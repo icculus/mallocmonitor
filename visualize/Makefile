@@ -3,6 +3,7 @@ DEFS += -Duint8="unsigned char" -Duint32="unsigned int"
 DEFS += -Duint16="unsigned short" -Dtick_t="unsigned int"
 DEFS += -Duint64="unsigned long long" -Dtick_t="unsigned int"
 DEFS += -Ddumpptr="uint32" -Dtick_t="unsigned int"
+DEFS += -D_HAVE_ASM_BYTEORDER_H_=1
 
 CC = gcc
 OPTS = -O0

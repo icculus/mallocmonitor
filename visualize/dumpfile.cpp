@@ -9,6 +9,10 @@
 
 #include "dumpfile.h"
 
+#if _HAVE_ASM_BYTEORDER_H_
+#include <asm/byteorder.h>
+#endif
+
 static int platform_byteorder = 0;
 static inline int is_bigendian(void)
 {
@@ -17,8 +21,37 @@ static inline int is_bigendian(void)
 } // is_bigendian
 
 
-#define BYTESWAP32(x) throw("byteswapping not implemented yet!")
-#define BYTESWAP64(x) throw("byteswapping not implemented yet!")
+inline void BYTESWAP16(uint16 &x)
+{
+    #ifdef __arch__swab16
+    x = __arch__swab16(x);
+    #else
+    x = ( (x << 8) | (x >> 8) );
+    #endif
+} // BYTESWAP16
+
+inline void BYTESWAP32(uint32 &x)
+{
+    #ifdef __arch__swab32
+    x = __arch__swab32(x);
+    #else
+    x = ((x<<24) | ((x<<8) & 0x00FF0000) | ((x>>8) & 0x0000FF00) | (x>>24));
+    #endif
+} // BYTESWAP16
+
+inline void BYTESWAP64(uint64 &x)
+{
+    #ifdef __arch__swab64
+    x = __arch__swab64(x);
+    #else
+    uint32 lo = (uint32) (x & 0xFFFFFFFF);
+    BYTESWAP32(lo);
+    uint32 hi = (uint32) ((x >> 32) & 0xFFFFFFFF);
+    BYTESWAP32(hi);
+    x = (lo << 32) | hi;
+    #endif
+} // BYTESWAP64
+
 
 CallstackManager::callstackid CallstackManager::add(dumpptr *ptrs, size_t framecount)
 {
@@ -636,7 +669,7 @@ inline void DumpFile::read_ptr(dumpptr &ptr) throw (const char *)
     read_ui32(ui32);
     ptr = (dumpptr) ui32;
 #endif
-} // DumpFile::read_ui32
+} // DumpFile::read_ptr
 
 inline void DumpFile::read_sizet(dumpptr &sizet) throw (const char *)
 {
