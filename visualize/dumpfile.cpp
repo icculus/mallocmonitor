@@ -45,8 +45,7 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
         } // else
     } // while
 
-    // framecount==0 means complete match with existing branch.
-    assert((framecount == 0) || (node == NULL));
+    // (framecount == 0) here means a complete match with existing branch.
 
     while (framecount)  // build any missing nodes...
     {
