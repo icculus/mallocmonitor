@@ -248,7 +248,7 @@ public:
     void add_memalign(DumpFileOperation *op);
     void add_free(DumpFileOperation *op);
     void done_adding(ProgressNotify &pn);
-    //FragMapNode **get_fragmap(size_t operation_index, size_t &nodecount);
+    FragMapNode **get_fragmap(size_t operation_index, size_t &nodecount);
 
 protected:
     FragMapSnapshot **snapshots;
