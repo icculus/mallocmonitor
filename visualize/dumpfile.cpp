@@ -137,29 +137,66 @@ FragMapSnapshot::~FragMapSnapshot()
 } // FragMapSnapshot::~FragMapSnapshot
 
 
-FragMapNode **FragMapManager::get_fragmap(size_t op_index, size_t &nodecount)
+inline void FragMapManager::hash_snapshot(FragMapSnapshot *snapshot)
+{
+    size_t max = snapshot->total_nodes;
+    FragMapNode **node = snapshot->nodes;
+    for (size_t i; i < max; i++, node++)
+        insert_block((*node)->ptr, (*node)->size);
+} // FragMapManager::hash_snapshot
+
+
+void FragMapManager::walk_fragmap(DumpFile *df, size_t startop, size_t endop)
+{
+    for (size_t i = startop; i <= endop; i++)
+    {
+        DumpFileOperation *op = df->getOperation(i);
+        switch (op->getOperationType())
+        {
+            case DUMPFILE_OP_MALLOC: hash_malloc(op); break;
+            case DUMPFILE_OP_REALLOC: hash_realloc(op); break;
+            case DUMPFILE_OP_MEMALIGN: hash_memalign(op); break;
+            case DUMPFILE_OP_FREE: hash_free(op); break;
+            default: assert(0 && "unknown dumpfile operation!"); break;
+        } // switch
+    } // for
+} // FragMapManager::walk_fragmap
+
+
+// !!! FIXME: this code sucks.
+FragMapNode **FragMapManager::get_fragmap(DumpFile *df, size_t op_index, size_t &nodecount)
 {
     // Find the closest snapshot...
-    // !!! FIXME: This is slow.
-    for (uint32 i = 0; i < total_snapshots; i++)
+    // !!! FIXME: Linear search is slow...
+    uint32 i;
+    FragMapSnapshot *ss = NULL;
+    size_t thisop = 0;
+
+    for (i = 0; i < total_snapshots; i++)
     {
-        FragMapSnapshot *ss = snapshots[i];
-        if (ss->operation_index == op_index)  // exact match!
+        ss = snapshots[i];
+        thisop = ss->operation_index;
+        if (thisop == op_index)  // exact match!
         {
             nodecount = ss->total_nodes;
             return(ss->nodes);
         } // if
 
-        if (ss->operation_index < op_index)  // we passed it.
-        {
-            delete ss;
-            empty_hashtable();
-            if (i != 0)
-                build_fragmap_from_snapshot(snapshots[i-1]);
-            walk_fragmap_to_opidx(op_index);
-            snapshots[i] = create_snapshot();
-        } // if
+        if (thisop > op_index)  // we passed it.
+            break;
     } // for
+
+    delete ss;
+    empty_hashtable();
+    if (i > 0)
+    {
+        hash_snapshot(snapshots[i-1]);
+        thisop = snapshots[i-1]->operation_index;
+    } // if
+    walk_fragmap(df, thisop, op_index);
+    ss = snapshots[i] = create_snapshot();
+    nodecount = ss->total_nodes;
+    return(ss->nodes);
 } // FragMapManager::get_fragmap
 
 
@@ -189,7 +226,7 @@ void FragMapManager::bubble_sort(FragMapNode **a, uint32 lo, uint32 hi)
         {
             if (cmpfn(a[i], a[i+1]) > 0)
             {
-                swapfn(a[i], a[i+1]);
+                swapfn(a, i, i+1);
                 sorted = false;
             } /* if */
         } /* for */
@@ -199,7 +236,6 @@ void FragMapManager::bubble_sort(FragMapNode **a, uint32 lo, uint32 hi)
 
 void FragMapManager::quick_sort(FragMapNode **a, uint32 lo, uint32 hi)
 {
-    FragMapNode *tmp;
     uint32 i;
     uint32 j;
     uint32 v;
@@ -420,9 +456,38 @@ void FragMapManager::remove_block(dumpptr ptr)
 } // FragMapManager::remove_block
 
 
-void FragMapManager::add_malloc(DumpFileOperation *op)
+inline void FragMapManager::hash_malloc(DumpFileOperation *op)
 {
     insert_block(op->op_malloc.retval, op->op_malloc.size);
+} // FragMapManager::hash_malloc
+
+
+inline void FragMapManager::hash_realloc(DumpFileOperation *op)
+{
+    // !!! FIXME: Don't remove and reinsert if ptr == rc && size > 0...
+    if (op->op_realloc.ptr)
+        remove_block(op->op_realloc.ptr);
+
+    if (op->op_realloc.size)
+        insert_block(op->op_realloc.retval, op->op_realloc.size);
+} // FragMapManager::hash_realloc
+
+
+inline void FragMapManager::hash_memalign(DumpFileOperation *op)
+{
+    insert_block(op->op_memalign.retval, op->op_memalign.size);
+} // FragMapManager::hash_memalign
+
+
+inline void FragMapManager::hash_free(DumpFileOperation *op)
+{
+    remove_block(op->op_free.ptr);
+} // FragMapManager::hash_free
+
+
+void FragMapManager::add_malloc(DumpFileOperation *op)
+{
+    hash_malloc(op);
     increment_operations();
 } // FragMapManager::add_malloc
 
@@ -430,28 +495,21 @@ void FragMapManager::add_malloc(DumpFileOperation *op)
 void FragMapManager::add_realloc(DumpFileOperation *op)
 {
     // !!! FIXME: Is realloc(NULL, 0) illegal?
-
-    // !!! FIXME: Don't remove and reinsert if ptr == rc && size > 0...
-    if (op->op_realloc.ptr)
-        remove_block(op->op_realloc.ptr);
-
-    if (op->op_realloc.size)
-        insert_block(op->op_realloc.retval, op->op_realloc.size);
-
+    hash_realloc(op);
     increment_operations();
 } // FragMapManager::add_realloc
 
 
 void FragMapManager::add_memalign(DumpFileOperation *op)
 {
-    insert_block(op->op_memalign.retval, op->op_memalign.size);
+    hash_memalign(op);
     increment_operations();
 } // FragMapManager::add_memalign
 
 
 void FragMapManager::add_free(DumpFileOperation *op)
 {
-    remove_block(op->op_free.ptr);
+    hash_free(op);
     increment_operations();
 } // FragMapManager::add_free
 

@@ -248,7 +248,7 @@ public:
     void add_memalign(DumpFileOperation *op);
     void add_free(DumpFileOperation *op);
     void done_adding(ProgressNotify &pn);
-    FragMapNode **get_fragmap(size_t operation_index, size_t &nodecount);
+    FragMapNode **get_fragmap(DumpFile *df, size_t operation_index, size_t &nodecount);
 
 protected:
     FragMapSnapshot **snapshots;
@@ -258,6 +258,14 @@ protected:
     FragMapSnapshot *create_snapshot();
     void add_snapshot();
     inline void empty_hashtable();
+
+    // These deal with the hashtable directly with no check for bad behaviour.
+    inline void hash_snapshot(FragMapSnapshot *snapshot);
+    inline void hash_malloc(DumpFileOperation *op);
+    inline void hash_realloc(DumpFileOperation *op);
+    inline void hash_memalign(DumpFileOperation *op);
+    inline void hash_free(DumpFileOperation *op);
+    void walk_fragmap(DumpFile *df, size_t startop, size_t endop);
 
 private:
     FragMapNode **fragmap;
@@ -316,7 +324,7 @@ private:
     inline void read_block(void *ptr, size_t size) throw (const char *);
     inline void read_ui8(uint8 &ui8) throw (const char *);
     inline void read_ui32(uint32 &ui32) throw (const char *);
-    inline void read_ui64(dumpptr &ui64) throw (const char *);
+    inline void read_ui64(uint64 &ui64) throw (const char *);
     inline void read_ptr(dumpptr &ptr) throw (const char *);
     inline void read_sizet(dumpptr &sizet) throw (const char *);
     inline void read_timestamp(tick_t &t) throw (const char *);

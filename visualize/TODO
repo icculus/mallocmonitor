@@ -1,11 +1,13 @@
 
 - BadBehaviourManager
-- Sort fragmap snapshots during creation.
+- Split fragmap code off into a different file.
 - Fulfill fragmap requests from app.
 - write Fragmap node/snapshot/manager destruction
 - Hook up byteswapping...
 - const correctness
 - Don't use size_t; use, uh, dumpsizet or something.
+- compile-time assertions for data type sizes...
+- Need a way to turn callstack addresses into file/function/line.
 
 // end of TODO ...
 
