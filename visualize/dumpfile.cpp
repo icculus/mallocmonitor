@@ -174,7 +174,7 @@ inline void FragMapManager::hash_snapshot(FragMapSnapshot *snapshot)
 {
     size_t max = snapshot->total_nodes;
     FragMapNode **node = snapshot->nodes;
-    for (size_t i; i < max; i++, node++)
+    for (size_t i = 0; i < max; i++, node++)
         insert_block((*node)->ptr, (*node)->size);
 } // FragMapManager::hash_snapshot
 
