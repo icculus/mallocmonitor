@@ -1,6 +1,6 @@
 
 CC = gcc
-CFLAGS = -O0 -g -Wall -c -o
+DLL_CFLAGS = -O0 -fPIC -g -Wall -c -o
 DLL_LDFLAGS = -shared -o
 LD = gcc
 
@@ -15,7 +15,7 @@ clean :
 	rm -f $(HOOKLIB) $(HOOKLIBOBJS)
 
 %.o : %.c
-	$(CC) $(CFLAGS) $@ $<
+	$(CC) $(DLL_CFLAGS) $@ $<
 
 $(HOOKLIB) : $(HOOKLIBOBJS)
 	$(LD) $(DLL_LDFLAGS) $@ $(HOOKLIBOBJS)

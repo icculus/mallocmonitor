@@ -250,7 +250,6 @@ sub reap_kids {
 
 my $bigendian = 0;
 my $sizeofptr = 0;
-my $sizeofticks = 0;
 my $monitor_client_fname = '';
 my $monitor_client_pid = 0;
 my $monitor_client_id = '';
@@ -281,8 +280,6 @@ sub read_handshake {
     $sizeofptr = read_ui8_timeout();  # only handles 32 and 64-bit right now.
     return 0 if (($sizeofptr != 4) and ($sizeofptr != 8));
     # !!! TODO my $passwd = read_block(64, "\0");
-    $sizeofticks = read_ui8_timeout();  # only handles 32 and 64-bit right now.
-    return 0 if (($sizeofticks != 4) and ($sizeofticks != 8));
     $monitor_client_id = read_block(64, "\0");
     return 0 if (not defined $monitor_client_id);
     return 0 if (not $monitor_client_id =~ /\A[a-zA-Z0-9]+\Z/);
@@ -333,7 +330,7 @@ sub read_ptr {
 
 sub read_ticks {
     #return(read_native_word('ticks'));
-    my $val = (($sizeofticks == 4) ? read_ui32() : read_ui64());
+    my $val = read_ui32();
     syslogwarn('unexpected connection drop'), return 0 if not defined $val;
     return $val;
 }
@@ -422,7 +419,6 @@ sub server_mainline {
     debug("   - protocol version == $protocol_version");
     debug("   - byteorder == " . (($bigendian) ? "bigendian":"littleendian"));
     debug("   - sizeofptr == $sizeofptr");
-    debug("   - sizeofticks == $sizeofticks");
     debug("   - clientid == '$monitor_client_id'");
 
     # no longer care if client is quiet for long amounts of time.

@@ -331,7 +331,6 @@ static void disconnect_from_daemon(int graceful)
 static inline int daemon_write_handshake(const char *id)
 {
     uint8 sizeofptr = (uint8) (sizeof (void *));
-    uint8 sizeofticks = (uint8) (sizeof (tick_t));
     uint8 byteorder = (is_bigendian() ? 1 : 0);
     char fname[512];
     uint32 pid = (uint32) getpid();
@@ -342,7 +341,6 @@ static inline int daemon_write_handshake(const char *id)
     if (!daemon_write_ui8(DAEMON_PROTOCOL_VERSION)) return(0);
     if (!daemon_write_ui8(byteorder)) return(0);
     if (!daemon_write_ui8(sizeofptr)) return(0);
-    if (!daemon_write_ui8(sizeofticks)) return(0);
     if (!daemon_write_asciz(id)) return(0);
     if (!daemon_write_asciz(fname)) return(0);
     if (!daemon_write_ui32(pid)) return(0);
