@@ -20,7 +20,7 @@ static inline int is_bigendian(void)
 #define BYTESWAP32(x) throw("byteswapping not implemented yet!")
 #define BYTESWAP64(x) throw("byteswapping not implemented yet!")
 
-CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t framecount)
+CallstackManager::callstackid CallstackManager::add(dumpptr *ptrs, size_t framecount)
 {
     CallstackNode *parent = &this->root;  // top of tree.
     CallstackNode *node = parent->children;  // root node is placeholder.
@@ -34,7 +34,7 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
 
     total_frames += framecount;
 
-    uint64 ptr = *ptrs;  // local var so we don't deference on each sibling...
+    dumpptr ptr = *ptrs;  // local var so we don't deference on each sibling...
     while ((node != NULL) && (framecount))
     {
         if (node->ptr != ptr)  // non-matching node; check siblings.
@@ -95,7 +95,7 @@ size_t CallstackManager::framecount(callstackid id)
 } // CallstackManager::framecount
 
 
-void CallstackManager::get(callstackid id, uint64 *ptrs)
+void CallstackManager::get(callstackid id, dumpptr *ptrs)
 {
     CallstackNode *node = (CallstackNode *) id;
     size_t depth = node->depth;
@@ -121,6 +121,11 @@ CallstackManager::CallstackNode::~CallstackNode()
     } // while
 } // CallstackNode destructor
 
+#if 0
+FragMapManager::FragMapManager()
+    : snapshots(NULL), total_snapshots(0), fragmap(NULL)
+{
+} // FragMapManager constructor
 
 FragMapManager::~FragMapManager()
 {
@@ -131,13 +136,13 @@ FragMapManager::~FragMapManager()
 
 void FragMapManager::insert_block(FragMapNode *insnode)
 {
-    uint64 ptr = insnode->ptr;
+    dumpptr ptr = insnode->ptr;
     FragMapNode *node = fragmap;
     FragMapNode **child = NULL;
 
     while (node)
     {
-        uint64 nodeptr = node->ptr;
+        dumpptr nodeptr = node->ptr;
         assert(ptr != nodeptr);
         child = (ptr < nodeptr) ? &node->left : &node->right;
         if (*child == NULL)  // if null, then this is our insertion point!
@@ -156,17 +161,17 @@ void FragMapManager::insert_block(FragMapNode *insnode)
 } // FragMapManager::insert_block
 
 
-void FragMapManager::insert_block(uint64 ptr, size_t size)
+void FragMapManager::insert_block(dumpptr ptr, size_t size)
 {
     insert_block(new FragMapNode(ptr, size));
 } // FragMapManager::insert_block
 
 
-FragMapNode *FragMapManager::find_block(uint64 ptr, FragMapNode *node)
+FragMapNode *FragMapManager::find_block(dumpptr ptr, FragMapNode *node)
 {
     while (node)
     {
-        uint64 nodeptr = node->ptr;
+        dumpptr nodeptr = node->ptr;
         if (ptr == nodeptr)
             return(node);  // we have a match!
         else
@@ -177,7 +182,7 @@ FragMapNode *FragMapManager::find_block(uint64 ptr, FragMapNode *node)
 } // FragMapManager::find_block
 
 
-void FragMapManager::remove_block(uint64 ptr)
+void FragMapManager::remove_block(dumpptr ptr)
 {
     FragMapNode *node = fragmap;
     FragMapNode *parent = NULL;
@@ -193,7 +198,7 @@ void FragMapManager::remove_block(uint64 ptr)
 
     while (node)
     {
-        uint64 nodeptr = node->ptr;
+        dumpptr nodeptr = node->ptr;
         if (ptr != nodeptr)  // not our node, keep looking...
         {
             parent = node;
@@ -219,6 +224,112 @@ void FragMapManager::remove_block(uint64 ptr)
             return;
         } // else
     } // while
+} // FragMapManager::remove_block
+#endif
+
+
+inline void FragMapManager::delete_node(FragMapNode *node)
+{
+    node->right = freepool;
+    freepool = node;
+} // FragMapManager::delete_node
+
+
+inline FragMapNode *FragMapManager::allocate_node(dumpptr ptr, size_t size)
+{
+    FragMapNode *retval = freepool;
+    if (retval == NULL)
+        retval = new FragMapNode(ptr, size);
+    else
+    {
+        freepool = retval->right;
+        retval->ptr = ptr;
+        retval->size = size;
+    } // else
+
+    return(retval);
+} // FragMapManager::allocate_node
+
+
+void FragMapManager::delete_nodelist(FragMapNode *node)
+{
+    FragMapNode *next;
+    while (node)
+    {
+        next = node->right;
+        delete node;
+        node = next;
+    } // while
+} // FragMapManager::delete_nodelist
+
+
+
+FragMapManager::FragMapManager()
+    : snapshots(NULL), total_snapshots(0), fragmap(NULL), freepool(NULL)
+{
+    fragmap = new FragMapNode*[0xFFFF + 1];
+    memset(fragmap, '\0', (0xFFFF + 1) * sizeof (FragMapNode *));
+} // FragMapManager constructor
+
+
+FragMapManager::~FragMapManager()
+{
+    delete_nodelist(freepool);
+
+    for (size_t i = 0; i < 0xFFFF; i++)
+        delete_nodelist(fragmap[i]);
+
+    delete[] fragmap;
+    delete snapshots;
+} // FragMapManager destructor
+
+
+inline uint16 FragMapManager::calculate_hash(dumpptr ptr)
+{
+#if 0
+    uint16 retval = ((ptr & 0xFFFF) |
+                     ((ptr & (1 << 17)) >> 17) |
+                     ((ptr & (1 << 18)) >> 17));
+#elif 0
+    uint16 retval = (((ptr & 0x55555555) >> 1) ^ ptr) & 0xFFFF;
+#elif 1   // this seems to give the best distribution...
+    uint16 retval = (((ptr & 0xFFFF0000) >> 16) ^ ptr) & 0xFFFF;
+#else
+#error Please define a hash function...
+#endif
+
+    return(retval);
+} // calculate_hash
+
+
+void FragMapManager::insert_block(dumpptr ptr, size_t size)
+{
+    uint16 hashval = calculate_hash(ptr);
+    FragMapNode *node = allocate_node(ptr, size);
+    node->right = fragmap[hashval];  // FIXME: do this in the constructor.
+    fragmap[hashval] = node;
+} // FragMapManager::insert_block
+
+
+void FragMapManager::remove_block(dumpptr ptr)
+{
+    uint16 hashval = calculate_hash(ptr);
+    FragMapNode *node = fragmap[hashval];
+    FragMapNode *prev = NULL;
+    while ((node != NULL) && (node->ptr != ptr))
+    {
+        prev = node;
+        node = node->right;
+    } // while
+
+    if (node != NULL)
+    {
+        if (prev != NULL)
+            prev->right = node->right;
+        else
+            fragmap[hashval] = node->right;
+        delete_node(node);
+    } // if
 } // FragMapManager::remove_block
 
 
@@ -256,6 +367,41 @@ void FragMapManager::add_free(DumpFileOperation *op)
 void FragMapManager::done_adding(ProgressNotify &pn)
 {
     // !!! FIXME: flatten out final fragmap?
+
+#if 1  // PROFILING_STATISTICS
+    int deepest = 0;
+    int totalnodes = 0;
+
+    #define MAXDEPTHS 16
+    int depths[MAXDEPTHS];
+    memset(depths, '\0', sizeof (depths));
+
+    for (size_t i = 0; i < 0xFFFF; i++)
+    {
+        FragMapNode *node = fragmap[i];
+        int depth = 0;
+        while (node)
+        {
+            totalnodes++;
+            depth++;
+            node = node->right;
+        }
+
+        if (depth < MAXDEPTHS)
+            depths[depth]++;
+
+        if (depth > deepest)
+            deepest = depth;
+    }
+
+    fprintf(stderr, "fragmap total == %d, deepest == %d, empties == %d\n",
+            totalnodes, deepest, depths[0]);
+
+    if (deepest >= MAXDEPTHS)
+        deepest = MAXDEPTHS - 1;
+    for (int i = 1; i <= deepest; i++)
+        fprintf(stderr, " %d: %d\n", i, depths[i]);
+#endif
 } // FragMapManager::done_adding
 
 
@@ -304,28 +450,34 @@ inline void DumpFile::read_ui32(uint32 &ui32) throw (const char *)
         BYTESWAP32(ui32);
 } // DumpFile::read_ui32
 
-inline void DumpFile::read_ui64(uint64 &ui64) throw (const char *)
+inline void DumpFile::read_ui64(dumpptr &ui64) throw (const char *)
 {
     read_block(&ui64, sizeof (ui64));
     if (byte_order != platform_byteorder)
         BYTESWAP64(ui64);
 } // DumpFile::read_ui64
 
-inline void DumpFile::read_ptr(uint64 &ptr) throw (const char *)
+inline void DumpFile::read_ptr(dumpptr &ptr) throw (const char *)
 {
+#if SUPPORT_64BIT_CLIENTS
     if (sizeofptr == 4)
     {
         uint32 ui32;
         read_ui32(ui32);
-        ptr = (uint64) ui32;
+        ptr = (dumpptr) ui32;
     } // if
     else
     {
         read_ui64(ptr);
     } // else
+#else
+    uint32 ui32;
+    read_ui32(ui32);
+    ptr = (dumpptr) ui32;
+#endif
 } // DumpFile::read_ui32
 
-inline void DumpFile::read_sizet(uint64 &sizet) throw (const char *)
+inline void DumpFile::read_sizet(dumpptr &sizet) throw (const char *)
 {
     read_ptr(sizet);
 } // DumpFile::read_sizet
@@ -338,13 +490,13 @@ inline void DumpFile::read_timestamp(tick_t &t) throw (const char *)
 inline void DumpFile::read_callstack(CallstackManager::callstackid &id)
     throw (const char *)
 {
-    uint64 *buf = NULL;
+    dumpptr *buf = NULL;
     uint32 count;
 
     read_ui32(count);
     if (count)
     {
-        buf = (uint64 *) alloca(sizeof (uint64)/*sizeofptr*/ * count);
+        buf = (dumpptr *) alloca(sizeof (dumpptr)/*sizeofptr*/ * count);
 //        read_block(buf, count * sizeofptr);
         for (uint32 i = 0; i < count; i++)
             read_ptr(buf[i]);
@@ -425,6 +577,10 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
         read_asciz(id);
         read_asciz(this->fname);
         read_ui32(pid);
+
+        // rebuild with dumpptr defined to something bigger...
+        if (sizeofptr > sizeof (dumpptr))
+            throw("This build doesn't support this dumpfile's pointer size");
 
         uint8 optype;
         DumpFileOperation dummyop;

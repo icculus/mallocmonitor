@@ -25,7 +25,7 @@ static void print_callstack(CallstackManager &cm,
                             CallstackManager::callstackid id)
 {
     size_t count = cm.framecount(id);
-    uint64 *frames = (uint64 *) alloca(sizeof (uint64) * count);
+    dumpptr *frames = (dumpptr *) alloca(sizeof (dumpptr) * count);
     cm.get(id, frames);
 
     printf("      Callstack:\n");

@@ -51,10 +51,10 @@ public:
     typedef void *callstackid;  // Consider this opaque.
 
     CallstackManager() : total_frames(0), unique_frames(0) {}
-    callstackid add(uint64 *ptrs, size_t framecount);
+    callstackid add(dumpptr *ptrs, size_t framecount);
     void done_adding(ProgressNotify &pn);
     size_t framecount(callstackid id);
-    void get(callstackid id, uint64 *ptrs);
+    void get(callstackid id, dumpptr *ptrs);
     size_t getTotalCallstackFrames() { return(total_frames); }
     size_t getUniqueCallstackFrames() { return(unique_frames); }
 
@@ -68,10 +68,10 @@ protected:
     class CallstackNode
     {
     public:
-        CallstackNode(uint64 _ptr=0, CallstackNode *p=NULL, size_t d=0)
+        CallstackNode(dumpptr _ptr=0, CallstackNode *p=NULL, size_t d=0)
             : ptr(_ptr), depth(d), parent(p), children(NULL), sibling(NULL) {}
         ~CallstackNode();
-        uint64 ptr;
+        dumpptr ptr;
         size_t depth;
         CallstackNode *parent;
         CallstackNode *children;
@@ -116,27 +116,27 @@ public:
     {
         struct
         {
-            uint64 size;
-            uint64 retval;
+            dumpptr size;
+            dumpptr retval;
         } op_malloc;
 
         struct
         {
-            uint64 ptr;
-            uint64 size;
-            uint64 retval;
+            dumpptr ptr;
+            dumpptr size;
+            dumpptr retval;
         } op_realloc;
 
         struct
         {
-            uint64 boundary;
-            uint64 size;
-            uint64 retval;
+            dumpptr boundary;
+            dumpptr size;
+            dumpptr retval;
         } op_memalign;
 
         struct
         {
-            uint64 ptr;
+            dumpptr ptr;
         } op_free;
     };
 
@@ -192,10 +192,10 @@ public:
 class FragMapNode
 {
 public:
-    FragMapNode(uint64 p=0x00000000, size_t s=0) :
+    FragMapNode(dumpptr p=0x00000000, size_t s=0) :
         ptr(p), size(s), left(NULL), right(NULL) {}
     // !!! FIXME: ~FragMapNode();
-    uint64 ptr;
+    dumpptr ptr;
     size_t size;
     FragMapNode *left;
     FragMapNode *right;
@@ -240,7 +240,7 @@ public:
 class FragMapManager
 {
 public:
-    FragMapManager() : snapshots(NULL), total_snapshots(0), fragmap(NULL) {}
+    FragMapManager();
     ~FragMapManager();
     void add_malloc(DumpFileOperation *op);
     void add_realloc(DumpFileOperation *op);
@@ -251,14 +251,17 @@ public:
 protected:
     FragMapSnapshot *snapshots;
     size_t total_snapshots;
-    void insert_block(FragMapNode *insnode);
-    void insert_block(uint64 ptr, size_t s);
-    FragMapNode *find_block(uint64 ptr, FragMapNode *node);
-    FragMapNode *find_block(uint64 ptr) { return find_block(ptr, fragmap); }
-    void remove_block(uint64 ptr);
+    void insert_block(dumpptr ptr, size_t s);
+    void remove_block(dumpptr ptr);
 
 private:
-    FragMapNode *fragmap;
+    FragMapNode **fragmap;
+
+    static inline uint16 calculate_hash(dumpptr val);
+    static void delete_nodelist(FragMapNode *node);
+    inline FragMapNode *allocate_node(dumpptr ptr, size_t s);
+    inline void delete_node(FragMapNode *node);
+    FragMapNode *freepool;
 };
 
 
@@ -303,9 +306,9 @@ private:
     inline void read_block(void *ptr, size_t size) throw (const char *);
     inline void read_ui8(uint8 &ui8) throw (const char *);
     inline void read_ui32(uint32 &ui32) throw (const char *);
-    inline void read_ui64(uint64 &ui64) throw (const char *);
-    inline void read_ptr(uint64 &ptr) throw (const char *);
-    inline void read_sizet(uint64 &sizet) throw (const char *);
+    inline void read_ui64(dumpptr &ui64) throw (const char *);
+    inline void read_ptr(dumpptr &ptr) throw (const char *);
+    inline void read_sizet(dumpptr &sizet) throw (const char *);
     inline void read_timestamp(tick_t &t) throw (const char *);
     inline void read_callstack(CallstackManager::callstackid &id) throw (const char *);
     inline void read_asciz(char *&str) throw (const char *);
