@@ -55,7 +55,7 @@ inline void BYTESWAP64(uint64 &x)
     BYTESWAP32(lo);
     uint32 hi = (uint32) ((x >> 32) & 0xFFFFFFFF);
     BYTESWAP32(hi);
-    x = (lo << 32) | hi;
+    x = ( (((uint64) lo) << 32) | ((uint64) hi) );
     #endif
 } // BYTESWAP64
 
