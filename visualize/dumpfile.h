@@ -263,7 +263,11 @@ private:
     size_t current_operation;
     size_t snapshot_operations;
 
-    #define FRAGMAP_SNAPSHOT_THRESHOLD 1000
+    static void bubble_sort(FragMapNode **a, uint32 lo, uint32 hi);
+    static void quick_sort(FragMapNode **a, uint32 lo, uint32 hi);
+    static void sort(FragMapNode **entries, uint32 max);
+
+    #define FRAGMAP_SNAPSHOT_THRESHOLD 5000
     inline void increment_operations();
     static inline uint16 calculate_hash(dumpptr val);
 };

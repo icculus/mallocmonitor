@@ -143,6 +143,99 @@ FragMapNode **FragMapManager::get_fragmap(size_t op_index, size_t &nodecount)
 } // FragMapManager::get_fragmap
 
 
+#define FRAGMAPMANAGER_QUICKSORT_THRESHOLD 4
+
+void FragMapManager::bubble_sort(FragMapNode **a, uint32 lo, uint32 hi)
+{
+    uint32 i;
+    bool sorted;
+
+    do
+    {
+        sorted = true;
+        for (i = lo; i < hi; i++)
+        {
+            if (a[i]->ptr > a[i+1]->ptr)
+            {
+                FragMapNode *tmp = a[i];
+                a[i] = a[i+1];
+                a[i+1] = tmp;
+                sorted = false;
+            } /* if */
+        } /* for */
+    } while (!sorted);
+} // FragMapManager::bubble_sort
+
+
+void FragMapManager::quick_sort(FragMapNode **a, uint32 lo, uint32 hi)
+{
+    FragMapNode *tmp;
+    uint32 i;
+    uint32 j;
+    uint32 v;
+
+    if ((hi - lo) <= FRAGMAPMANAGER_QUICKSORT_THRESHOLD)
+        bubble_sort(a, lo, hi);
+    else
+    {
+        i = (hi + lo) >> 1;
+
+        if (a[lo]->ptr > a[i]->ptr)
+        {
+            tmp = a[i];
+            a[i] = a[lo];
+            a[lo] = tmp;
+        } // if
+
+        if (a[lo]->ptr > a[hi]->ptr)
+        {
+            tmp = a[hi];
+            a[hi] = a[lo];
+            a[lo] = tmp;
+        } // if
+
+        if (a[i]->ptr > a[hi]->ptr)
+        {
+            tmp = a[i];
+            a[i] = a[hi];
+            a[hi] = tmp;
+        } // if
+
+        j = hi - 1;
+        tmp = a[j];
+        a[j] = a[i];
+        a[i] = tmp;
+        i = lo;
+        v = j;
+        while (1)
+        {
+            while (a[++i]->ptr < a[v]->ptr) { /* do nothing */ }
+            while (a[--j]->ptr > a[v]->ptr) { /* do nothing */ }
+            if (j < i)
+                break;
+            tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        } // while
+        tmp = a[i];
+        a[i] = a[hi-1];
+        a[hi-1] = tmp;
+        quick_sort(a, lo, j);
+        quick_sort(a, i+1, hi);
+    } // else
+} // FragMapManager::quick_sort
+
+
+void FragMapManager::sort(FragMapNode **entries, uint32 max)
+{
+    /*
+     * Quicksort w/ Bubblesort fallback algorithm inspired by code from here:
+     *   http://www.cs.ubc.ca/spider/harrison/Java/sorting-demo.html
+     */
+    quick_sort(entries, 0, max - 1);
+} /* FragMapManager::sort */
+
+
 void FragMapManager::create_snapshot()
 {
     uint32 count = 0;
@@ -160,7 +253,7 @@ void FragMapManager::create_snapshot()
         } // while
     } // for
 
-    // !!! FIXME: qsort the snapshot!
+    sort(snapshot->nodes, total_nodes);
 
     // !!! FIXME: realloc? yuck!
     total_snapshots++;
