@@ -3,8 +3,12 @@
 - Flatten fragmaps to snapshots.
 - Rebalance fragmap tree.
 - hook up fragmaps to dumpfile parser.
+- write Fragmap node/snapshot/manager destruction
 - Use native word size, throw error if sizeofptr != sizeof (void *) for now.
 - Hook up byteswapping...
+- const correctness
+- FragMapManager is TOO SLOW...maybe b-trees aren't good for this? Need to
+  implement rebalancing and recycling of dead nodes to be sure, though...
 
 // end of TODO ...
 
