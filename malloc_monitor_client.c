@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -21,6 +22,10 @@
 #define DAEMON_HELLO_SIG "Malloc Monitor!"
 #define DAEMON_PROTOCOL_VERSION 1
 
+/* sizes are checked at runtime... */
+typedef unsigned int uint32;
+typedef uint32 tick_t;  /* milliseconds since initial connect to daemon. */
+typedef unsigned char uint8;
 
 #ifdef _WIN32
     #error look out, this is not a tested codepath!
@@ -65,13 +70,24 @@
 
     static inline void get_process_filename(char *fname, size_t s)
     {
-        fname[0] = 0;  // !!! FIXME
+        fname[0] = 0;  /* !!! FIXME */
     }
 
     int get_current_callstack(void **buffer, int size)
     {
-        return(0);  // !!! FIXME!
+        return(0);  /* !!! FIXME! */
     } /* get_current_callstack */
+
+    static inline void reset_tick_base(void)
+    {
+        /* !!! FIXME */
+    } /* reset_tick_base */
+
+    static inline tick_t get_ticks(void)
+    {
+        /* !!! FIXME */
+        return(0);
+    } /* reset_tick_base */
 
 #else
     #include <sys/socket.h>
@@ -101,15 +117,29 @@
     #define MSG_NOSIGNAL 0x4000
     #endif
 
+    static struct timeval tickbase;
+    static inline void reset_tick_base(void)
+    {
+        gettimeofday(&tickbase, NULL);
+    } /* reset_tick_base */
+
+    static inline tick_t get_ticks(void)
+    {
+        struct timeval curtime;
+        gettimeofday(&curtime, NULL);
+        return( (tick_t) ( ((curtime.tv_sec - tickbase.tv_sec) * 1000) +
+                           ((curtime.tv_usec - tickbase.tv_usec) / 1000) ) );
+    } /* get_ticks */
+
     #if MACOSX
     static inline void get_process_filename(char *fname, size_t s)
     {
-        fname[0] = 0;  // !!! FIXME
+        fname[0] = 0;  /* !!! FIXME */
     }
 
     int get_current_callstack(void **buffer, int size)
     {
-        return(0);  // !!! FIXME!
+        return(0);  /* !!! FIXME! */
     } /* get_current_callstack */
 
     #else
@@ -148,10 +178,6 @@
     #endif
 
 #endif
-
-/* sizes are checked at runtime... */
-typedef unsigned int uint32;
-typedef unsigned char uint8;
 
 typedef enum
 {
@@ -284,6 +310,13 @@ static inline int daemon_write_callstack(void)
 } /* daemon_write_operation */
 
 
+static inline int daemon_write_timestamp(void)
+{
+    tick_t ticks = get_ticks();
+    return(daemon_write(&ticks, sizeof (tick_t)));
+} /* daemon_write_timestamp */
+
+
 static void disconnect_from_daemon(int graceful)
 {
     if (sockfd != -1)
@@ -306,6 +339,7 @@ static void disconnect_from_daemon(int graceful)
 static inline int daemon_write_handshake(const char *id)
 {
     uint8 sizeofptr = (uint8) (sizeof (void *));
+    uint8 sizeofticks = (uint8) (sizeof (tick_t));
     uint8 byteorder = (is_bigendian() ? 1 : 0);
     char fname[512];
     uint32 pid = (uint32) getpid();
@@ -316,9 +350,12 @@ static inline int daemon_write_handshake(const char *id)
     if (!daemon_write_ui8(DAEMON_PROTOCOL_VERSION)) return(0);
     if (!daemon_write_ui8(byteorder)) return(0);
     if (!daemon_write_ui8(sizeofptr)) return(0);
+    if (!daemon_write_ui8(sizeofticks)) return(0);
     if (!daemon_write_asciz(id)) return(0);
     if (!daemon_write_asciz(fname)) return(0);
     if (!daemon_write_ui32(pid)) return(0);
+
+    reset_tick_base();
 
     return(1);
 } /* daemon_write_handshake */
@@ -486,6 +523,7 @@ int MALLOCMONITOR_put_malloc(size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_MALLOC)) return(0);
+    if (!daemon_write_timestamp()) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
     if (!daemon_write_callstack()) return(0);
@@ -497,6 +535,7 @@ int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_REALLOC)) return(0);
+    if (!daemon_write_timestamp()) return(0);
     if (!daemon_write_ptr(p)) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
@@ -509,6 +548,7 @@ int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_MEMALIGN)) return(0);
+    if (!daemon_write_timestamp()) return(0);
     if (!daemon_write_sizet(b)) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
@@ -521,6 +561,7 @@ int MALLOCMONITOR_put_free(void *p)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_FREE)) return(0);
+    if (!daemon_write_timestamp()) return(0);
     if (!daemon_write_ptr(p)) return(0);
     if (!daemon_write_callstack()) return(0);
     return(1);
