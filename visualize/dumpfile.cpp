@@ -188,6 +188,9 @@ inline void FragMapManager::hash_snapshot(FragMapSnapshot *snapshot)
 
 void FragMapManager::walk_fragmap(DumpFile *df, size_t startop, size_t endop)
 {
+    if (endop >= df->getOperationCount())  // !!! FIXME: This is catching a bug...
+        endop = df->getOperationCount()-1;
+
     for (size_t i = startop; i <= endop; i++)
     {
         DumpFileOperation *op = df->getOperation(i);
@@ -212,6 +215,10 @@ FragMapNode **FragMapManager::get_fragmap(DumpFile *df, size_t op_index, size_t 
     FragMapSnapshot *ss = NULL;
     size_t thisop = 0;
 
+    // clamp the value if it's past the end of the dumpfile...
+    if (op_index >= df->getOperationCount())
+        op_index = df->getOperationCount()-1;
+
     for (i = 0; i < total_snapshots; i++)
     {
         ss = snapshots[i];
@@ -226,15 +233,20 @@ FragMapNode **FragMapManager::get_fragmap(DumpFile *df, size_t op_index, size_t 
             break;
     } // for
 
+    // delete this snapshot, since we're going to replace it with a new
+    //  one based on the previous snapshot walked to the requested position.
     delete ss;
-    empty_hashtable();
+    empty_hashtable();  // clear out anything that's sitting around.
+
+    // hash the closest previous snapshot so we can walk from there to the
+    //  requested position. If there isn't a previous, walk from operation 0.
     if (i > 0)
     {
         hash_snapshot(snapshots[i-1]);
         thisop = snapshots[i-1]->operation_index;
     } // if
-    walk_fragmap(df, thisop, op_index);
-    ss = snapshots[i] = create_snapshot();
+    walk_fragmap(df, op_index, thisop);
+    ss = snapshots[i] = create_snapshot();  // turn hash into new snapshot.
     nodecount = ss->total_nodes;
     return(ss->nodes);
 } // FragMapManager::get_fragmap
@@ -334,6 +346,7 @@ FragMapSnapshot *FragMapManager::create_snapshot()
         } // while
     } // for
 
+    assert(total_nodes == cnt);
     sort(ss->nodes, total_nodes);
     return(ss);
 } // FragMapManager::create_snapshot
@@ -442,6 +455,7 @@ inline void FragMapManager::empty_hashtable()
         FragMapNodePool::putlist(fragmap[i]);
 
     memset(fragmap, '\0', (0xFFFF + 1) * sizeof (FragMapNode *));
+    total_nodes = 0;
 } // FragMapManager::empty_hashtable
 
 
@@ -559,6 +573,7 @@ void FragMapManager::done_adding(ProgressNotify &pn)
 {
     // flatten out final fragmap...
     add_snapshot();
+    empty_hashtable();
 
 #if 0  // PROFILING_STATISTICS
     int deepest = 0;
