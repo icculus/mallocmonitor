@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <assert.h>
 
 #include "dumpfile.h"
 
@@ -16,6 +19,85 @@ static inline int is_bigendian(void)
 
 #define BYTESWAP32(x) throw("byteswapping not implemented yet!")
 #define BYTESWAP64(x) throw("byteswapping not implemented yet!")
+
+
+CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t framecount)
+{
+    CallstackNode *parent = &this->root;  // top of tree.
+    CallstackNode *node = parent->children;  // root node is placeholder.
+    size_t origframecount = framecount;
+
+    // assume everything is coming from main(), so start from the back so
+    //  we put it at the top of the tree. This will result in less dupes,
+    //  as nodes that have common ancestry will share common nodes.
+    ptrs += framecount;
+
+    while ((node != NULL) && (framecount))
+    {
+        if (node->ptr != *ptrs)  // non-matching node; check siblings.
+            node = node->sibling;
+        else  // matches, check next level...
+        {
+            ptrs--;
+            framecount--;
+            parent = node;
+            node = node->children;
+        } // else
+    } // while
+
+    // framecount==0 means complete match with existing branch.
+    assert((framecount == 0) || (node == NULL));
+
+    while (framecount)  // build any missing nodes...
+    {
+        node = new CallstackNode(*ptrs, parent, origframecount - framecount);
+        node->sibling = parent->children;
+        parent->children = node;
+        parent = node;
+        ptrs--;
+        framecount--;
+    } // if
+
+    return((callstackid) node);   // bottom of the callstack ("main", etc).
+} // CallstackManager::add
+
+
+void CallstackManager::done_adding(DumpFileProgress dfp)
+{
+    // no-op in this implementation
+} // CallstackManager::done_adding
+
+
+size_t CallstackManager::framecount(callstackid id)
+{
+    return(((CallstackNode *) id)->depth);
+} // CallstackManager::framecount
+
+
+void CallstackManager::get(callstackid id, uint64 *ptrs)
+{
+    CallstackNode *node = (CallstackNode *) id;
+    while (node)
+    {
+        *ptrs = node->ptr;
+        ptrs++;
+        node = node->parent;
+    } // while
+} // CallstackManager::get
+
+
+// CallstackManager automatically deletes the root node, which causes the
+//  whole tree to collapse.
+CallstackNode::~CallstackNode()
+{
+    CallstackNode *kid = this->children;
+    while (kid)
+    {
+        CallstackNode *next = kid->sibling;
+        delete kid;
+        kid = next;
+    } // while
+} // CallstackNode destructor
 
 
 void DumpFile::destruct(void)
@@ -35,8 +117,6 @@ void DumpFile::destruct(void)
     delete[] operations;
     operations = NULL;
     total_operations = 0;
-
-    // !!! FIXME: delete callstacks!
 } // DumpFile::Destruct
 
 
@@ -129,11 +209,11 @@ inline void DumpFile::read_asciz(char *&str) throw (const char *)
 } // read_asciz
 
 
-DumpFile::DumpFile(const char *fname) throw (const char *)
+DumpFile::DumpFile(const char *fname, DumpFileProgress dfp) throw (const char *)
     : id(NULL),
       fname(NULL),
+      total_operations(0),
       operations(NULL),
-      callstacks(NULL),
       io(NULL)
 {
     platform_byteorder = is_bigendian();
@@ -143,6 +223,16 @@ DumpFile::DumpFile(const char *fname) throw (const char *)
         io = fopen(fname, "rb");
         if (io == NULL)
             throw ((const char *) strerror(errno));
+
+        double fsize;
+        struct stat statbuf;
+        if (fstat(fileno(io), &statbuf) == -1)
+            throw ((const char *) strerror(errno));
+
+        if (statbuf.st_size == 0)
+            throw ("File is empty");
+
+        fsize = (double) statbuf.st_size;
 
         char sigbuf[16];
         read_block(sigbuf, sizeof (sigbuf));
@@ -223,7 +313,15 @@ printf("bogus opcode: %d\n", (int) optype);
             prevop->next = op;
             prevop = op;
             total_operations++;
+
+            if (dfp)
+            {
+                dfp( "Parsing raw data",
+                     (int) ((((double) ftell(io)) / fsize) * 100.0) );
+            } // if
         } // while
+
+        callstacks.done_adding(dfp);
 
         if (op != NULL)
             op->next = NULL;

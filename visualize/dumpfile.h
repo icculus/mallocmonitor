@@ -15,6 +15,9 @@
 
 #include <stdio.h>
 
+
+typedef void (*DumpFileProgress)(const char *status, int percent);
+
 typedef enum
 {
     DUMPFILE_OP_NOOP = 0,   /* never shows up in DumpFileOperations */
@@ -25,6 +28,89 @@ typedef enum
     DUMPFILE_OP_FREE,
     DUMPFILE_OP_TOTAL       /* never shows up in DumpFileOperations */
 } dumpfile_operation_t;
+
+
+class CallstackNode
+{
+public:
+    CallstackNode(uint64 _ptr=0, CallstackNode *p=NULL, size_t d=0)
+        : ptr(_ptr), depth(d), parent(p), children(NULL), sibling(NULL) {}
+    ~CallstackNode();
+    uint64 ptr;
+    size_t depth;
+    CallstackNode *parent;
+    CallstackNode *children;
+    CallstackNode *sibling;
+}; // CallstackNode
+
+
+class CallstackManager
+{
+public:
+    typedef void *callstackid;  // Consider this opaque.
+
+    callstackid add(uint64 *ptrs, size_t framecount);
+    void done_adding(DumpFileProgress dfp);
+    size_t framecount(callstackid id);
+    void get(callstackid id, uint64 *ptrs);
+
+protected:
+    CallstackNode root;
+}; // CallstackManager
+
+
+class BadBehaviourList
+{
+public:
+    // !!! FIXME: write this!
+};
+
+
+// Fragmentation Map tracking...
+
+// How this works:
+//  We build up "snapshots" that represent the fragmentation map every X
+//  memory operations. We use these sort of like MPEG "I-Frames"...a
+//  snapshot is a complete representation of the memory usage at that moment,
+//  then you can iterate through the memory operations from there to find
+//  a moment's accurate representation fairly efficiently.
+//
+// Snapshots move back and forth as needed; if you request a snapshot, the
+//  FragMapManager will find the closest snapsnot and update it to the
+//  timestamp requested. Over time, the snapshots will be in variable
+//  positions instead of every X operations.
+//
+// !!! FIXME: (this isn't implemented yet)
+class FragMapNode
+{
+public:
+    uint64 ptr;
+    size_t size;
+};
+
+class FragMapSnapshot
+{
+public:
+    FragMapNode *nodes;
+    size_t total_nodes;
+};
+
+class FragMapManager
+{
+public:
+    void add_malloc(size_t size, uint64 rc);
+    void add_realloc(uint64 ptr, size_t size, uint64 rc);
+    void add_memalign(size_t b, size_t a, uint64 rc);
+    void add_free(uint64 ptr);
+    void done_adding(DumpFileProgress dfp);
+
+protected:
+    FragMapSnapshot *snapshots;
+    size_t total_snapshots;
+
+private:
+    // !!! FIXME: hashtable goes here.  :/
+};
 
 
 class DumpFile;
@@ -71,14 +157,19 @@ protected:
     DumpFileOperation *next;
     dumpfile_operation_t optype;
     tick_t timestamp;
-    size_t callstack_index;
+    CallstackManager::callstackid callstack;
 };
 
 
+/*
+ * Constructing a dumpfile can take a LOT of processing and allocate a
+ *  ton of memory! Since the constructor may block for a long time, it
+ *  offers a callback you can use to pump your event queue or give updates.
+ */
 class DumpFile
 {
 public:
-    DumpFile(const char *fname) throw (const char *);
+    DumpFile(const char *fname, DumpFileProgress dfp=NULL) throw (const char *);
     ~DumpFile();
     uint8 getFormatVersion() { return protocol_version; }
     uint8 platformIsBigendian() { return (byte_order == 1); }
@@ -89,13 +180,7 @@ public:
     uint32 getProcessId() { return pid; }
     uint32 getOperationCount() { return total_operations; }
     DumpFileOperation *getOperation(size_t idx) { return operations[idx]; }
-    uint64 **getCallstack(DumpFileOperation &op)
-    {
-        //size_t idx = op.callstack_index;
-        //if (idx > total_callstacks)
-        //    return(NULL);
-        return callstacks[op.callstack_index];
-    } // getCallstack
+    CallstackManager callstacks;
 
 protected:
     uint8 protocol_version; /* dumpfile format version. */
@@ -106,8 +191,6 @@ protected:
     uint32 pid;   /* process ID associated with dump. */
     uint32 total_operations; /* number of Operation objects in this dump. */
     DumpFileOperation **operations; /* the ops in chronological order. */
-    uint32 total_callstacks; /* number of callstack objects in this dump. */
-    uint64 ***callstacks;  /* actual callstacks. */
 
 private:
     void destruct();
