@@ -24,6 +24,7 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
 {
     CallstackNode *parent = &this->root;  // top of tree.
     CallstackNode *node = parent->children;  // root node is placeholder.
+    CallstackNode *lastnode = NULL;
     size_t origframecount = framecount;
 
     // assume everything is coming from main(), so start from the back so
@@ -33,17 +34,31 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
 
     total_frames += framecount;
 
+    uint64 ptr = *ptrs;  // local var so we don't deference on each sibling...
     while ((node != NULL) && (framecount))
     {
-        if (node->ptr != *ptrs)  // non-matching node; check siblings.
+        if (node->ptr != ptr)  // non-matching node; check siblings.
+        {
+            lastnode = node;
             node = node->sibling;
+        } // if
         else  // matches, check next level...
         {
-            // !!! FIXME: move matching node to front of list...
+            // Move this node to the start of the list so frequently-used
+            //  nodes bubble to the top...
+            if (lastnode != NULL)
+            {
+                lastnode->sibling = node->sibling;
+                node->sibling = parent->children;
+                parent->children = node;
+                lastnode = NULL;
+            } // if
+
             ptrs--;
             framecount--;
             parent = node;
             node = node->children;
+            ptr = *ptrs;
         } // else
     } // while
 
