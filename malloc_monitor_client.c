@@ -63,6 +63,11 @@
         } /* if */
     } /* SocketLayerCleanup */
 
+    static inline void get_process_filename(char *fname, size_t s)
+    {
+        fname[0] = 0;  // !!! FIXME
+    }
+
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>
@@ -90,6 +95,25 @@
     #ifndef MSG_NOSIGNAL
     #define MSG_NOSIGNAL 0x4000
     #endif
+
+    #if MACOSX
+    static inline void get_process_filename(char *fname, size_t s)
+    {
+        fname[0] = 0;  // !!! FIXME
+    }
+    #else
+    static inline void get_process_filename(char *fname, size_t s)
+    {
+        /* Holy Linux-specific, batman! */
+        char proclink[64];
+        pid_t pid = getpid();
+        snprintf(proclink, sizeof (proclink), "/proc/%d/exe", (int) pid);
+        if (readlink(proclink, fname, s) == -1)
+            *fname = '\0';
+        fname[s-1] = '\0';  /* just in case. */
+    } /* get_process_filename */
+    #endif
+
 #endif
 
 /* sizes are checked at runtime... */
@@ -245,6 +269,9 @@ static inline int daemon_write_handshake(const char *id)
 {
     uint8 sizeofptr = (uint8) (sizeof (void *));
     uint8 byteorder = (is_bigendian() ? 1 : 0);
+    char fname[512];
+    uint32 pid = (uint32) getpid();
+    get_process_filename(fname, sizeof (fname));
 
     /* if the server drops us, daemon_write_* cleans up. */
     if (!daemon_write_asciz(DAEMON_HELLO_SIG)) return(0);
@@ -252,6 +279,8 @@ static inline int daemon_write_handshake(const char *id)
     if (!daemon_write_ui8(byteorder)) return(0);
     if (!daemon_write_ui8(sizeofptr)) return(0);
     if (!daemon_write_asciz(id)) return(0);
+    if (!daemon_write_asciz(fname)) return(0);
+    if (!daemon_write_ui32(pid)) return(0);
 
     return(1);
 } /* daemon_write_handshake */
