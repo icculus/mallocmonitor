@@ -73,7 +73,7 @@ typedef unsigned char uint8;
         fname[0] = 0;  /* !!! FIXME */
     }
 
-    int get_current_callstack(void **buffer, int size)
+    static inline int get_current_callstack(void **buffer, int size)
     {
         return(0);  /* !!! FIXME! */
     } /* get_current_callstack */
@@ -137,7 +137,7 @@ typedef unsigned char uint8;
         fname[0] = 0;  /* !!! FIXME */
     }
 
-    int get_current_callstack(void **buffer, int size)
+    static inline int get_current_callstack(void **buffer, int size)
     {
         return(0);  /* !!! FIXME! */
     } /* get_current_callstack */
@@ -156,23 +156,9 @@ typedef unsigned char uint8;
         fname[s-1] = '\0';  /* just in case. */
     } /* get_process_filename */
 
-    int get_current_callstack(void **buffer, int size)
+    static inline int get_current_callstack(void **buffer, int size)
     {
-        int rc = backtrace(buffer, size);
-
-        /*
-         * Chop off the top 4 entries if they exist: this func,
-         *  write_daemon_callstack(), MALLOCMONITOR_put_*, and the
-         *  call from the hook. Probably need a way to adjust this at
-         *  runtime.
-         */
-        if (rc < 4)
-        {
-            rc -= 4;
-            memmove(buffer, buffer + 4, rc * sizeof (void *));
-        } /* if */
-
-        return(rc);
+        return(backtrace(buffer, size));
     } /* get_current_callstack */
 
     #endif
@@ -294,17 +280,23 @@ static inline int daemon_write_sizet(size_t s)
 #define MAX_CALLSTACKS 64  /* !!! FIXME: ugh, may be more! */
 static inline int daemon_write_callstack(void)
 {
-    int i;
     void *callstack[MAX_CALLSTACKS];
+    void **ptr = callstack;
     int frames = get_current_callstack(callstack, MAX_CALLSTACKS);
 
-    if (!daemon_write_ui32(frames)) return(0);
-
-    for (i = 0; i < frames; i++)
+    /*
+     * Chop off the top 3 entries if they exist: this func,
+     *  MALLOCMONITOR_put_*, and the call from the hook. Probably
+     *  need a way to adjust this at runtime.
+     */
+    if (frames > 3)
     {
-        if (!daemon_write_ptr(callstack[i]))
-            return(0);
-    } /* for */
+        frames -= 3;
+        ptr += 3;
+    } /* if */
+
+    if (!daemon_write_ui32(frames)) return(0);
+    if (!daemon_write((void *) ptr, frames * sizeof (void *))) return(0);
 
     return(1);
 } /* daemon_write_operation */
