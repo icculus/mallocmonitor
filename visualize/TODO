@@ -6,6 +6,13 @@
 - Don't use size_t; use, uh, dumpsizet or something.
 - compile-time assertions for data type sizes...
 - Need a way to turn callstack addresses into file/function/line.
+- FragMap snapshots should probably be made by a threshold of time and
+  operations, so that a quick blast of allocations doesn't create multiple
+  snapshots, and a single allocation over the course of an hour doesn't
+  create one, either.
+- FragMapManager.get_fragmap() wants a pointer and a reference.
+- FragMapManager.get_fragmap() should return a const value.
+- FragMapManager.get_fragmap() shouldn't want a dumpfile.
 
 // end of TODO ...
 
