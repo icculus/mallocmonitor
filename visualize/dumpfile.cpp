@@ -444,6 +444,7 @@ inline void FragMapManager::empty_hashtable()
     memset(fragmap, '\0', (0xFFFF + 1) * sizeof (FragMapNode *));
 } // FragMapManager::empty_hashtable
 
+
 inline uint16 FragMapManager::calculate_hash(dumpptr ptr)
 {
 #if 0
@@ -557,7 +558,7 @@ void FragMapManager::add_free(DumpFileOperation *op)
 void FragMapManager::done_adding(ProgressNotify &pn)
 {
     // flatten out final fragmap...
-    create_snapshot();
+    add_snapshot();
 
 #if 0  // PROFILING_STATISTICS
     int deepest = 0;
@@ -592,6 +593,8 @@ void FragMapManager::done_adding(ProgressNotify &pn)
         deepest = MAXDEPTHS - 1;
     for (int i = 1; i <= deepest; i++)
         fprintf(stderr, " %d: %d\n", i, depths[i]);
+
+    printf("total_snapshots == %d\n", total_snapshots);
 #endif
 } // FragMapManager::done_adding
 
@@ -601,7 +604,7 @@ inline void FragMapManager::increment_operations()
     current_operation++;
     if (++snapshot_operations >= FRAGMAP_SNAPSHOT_THRESHOLD)
     {
-        create_snapshot();
+        add_snapshot();
         snapshot_operations = 0;
     } // if
 } // FragMapManager::increment_operations
