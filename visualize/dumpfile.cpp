@@ -129,27 +129,20 @@ FragMapManager::~FragMapManager()
 } // FragMapManager destructor
 
 
-void FragMapManager::insert_block(uint64 ptr, size_t size)
+void FragMapManager::insert_block(FragMapNode *insnode)
 {
+    uint64 ptr = insnode->ptr;
     FragMapNode *node = fragmap;
     FragMapNode **child = NULL;
 
     while (node)
     {
         uint64 nodeptr = node->ptr;
-
-        if (ptr == nodeptr)   // revive a dead node?
-        {
-            assert(node->dead);
-            node->dead = false;
-            node->size = size;
-            return;
-        } // if
-
+        assert(ptr != nodeptr);
         child = (ptr < nodeptr) ? &node->left : &node->right;
         if (*child == NULL)  // if null, then this is our insertion point!
         {
-            *child = new FragMapNode(ptr, size);  // !!! FIXME: pool these!
+            *child = insnode;
             return;
         } // if
 
@@ -159,39 +152,73 @@ void FragMapManager::insert_block(uint64 ptr, size_t size)
 
     // you should only be here if the fragmap is totally empty.
     assert(fragmap == NULL);
-    fragmap = new FragMapNode(ptr, size);
+    fragmap = insnode;
+} // FragMapManager::insert_block
+
+
+void FragMapManager::insert_block(uint64 ptr, size_t size)
+{
+    insert_block(new FragMapNode(ptr, size));
 } // FragMapManager::insert_block
 
 
 FragMapNode *FragMapManager::find_block(uint64 ptr, FragMapNode *node)
 {
-    if (node == NULL)
-        return(NULL);
+    while (node)
+    {
+        uint64 nodeptr = node->ptr;
+        if (ptr == nodeptr)
+            return(node);  // we have a match!
+        else
+            node = (ptr < nodeptr) ? node->left : node->right;
+    } // while
 
-    if (ptr == node->ptr)  // found?
-        return(node);
-
-    // recursive!
-    FragMapNode *child = find_block(ptr, node->left);
-    if (child != NULL)
-        return(child);
-
-    return(find_block(ptr, node->right));   // recursive!
+    return(NULL);
 } // FragMapManager::find_block
 
 
 void FragMapManager::remove_block(uint64 ptr)
 {
-    FragMapNode *node = find_block(ptr);
+    FragMapNode *node = fragmap;
+    FragMapNode *parent = NULL;
 
-    // "Removing" a node means flagging it as "dead".
-    //  This is because adjusting the tree is complex and nasty,
-    //  and it's likely a future allocation will reuse this address
-    //  anyhow. This also lets us consider double-free()s, etc.
-    // We can cull the dead nodes when rebalancing the tree, and
-    //  put them into an allocation pool for reuse.
-    if (node)
-        node->dead = true;
+    if ((node) && (node->ptr == ptr))  // the root node is to be removed...
+    {
+        fragmap = node->left;
+        if (node->right)
+            insert_block(node->right);
+        delete node;
+        return;
+    } // if
+
+    while (node)
+    {
+        uint64 nodeptr = node->ptr;
+        if (ptr != nodeptr)  // not our node, keep looking...
+        {
+            parent = node;
+            node = (ptr < nodeptr) ? node->left : node->right;
+        } // if
+
+        else  // This is the node; remove it.
+        {
+            if (ptr < parent->ptr)
+            {
+                parent->left = node->left;
+                if (node->right)
+                    insert_block(node->right);
+            } // if
+            else
+            {
+                parent->right = node->right;
+                if (node->left)
+                    insert_block(node->left);
+            } // else
+
+            delete node;
+            return;
+        } // else
+    } // while
 } // FragMapManager::remove_block
 
 

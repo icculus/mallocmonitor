@@ -193,11 +193,10 @@ class FragMapNode
 {
 public:
     FragMapNode(uint64 p=0x00000000, size_t s=0) :
-        ptr(p), size(s), dead(false), left(NULL), right(NULL) {}
+        ptr(p), size(s), left(NULL), right(NULL) {}
     // !!! FIXME: ~FragMapNode();
     uint64 ptr;
     size_t size;
-    bool dead;
     FragMapNode *left;
     FragMapNode *right;
 };
@@ -252,6 +251,7 @@ public:
 protected:
     FragMapSnapshot *snapshots;
     size_t total_snapshots;
+    void insert_block(FragMapNode *insnode);
     void insert_block(uint64 ptr, size_t s);
     FragMapNode *find_block(uint64 ptr, FragMapNode *node);
     FragMapNode *find_block(uint64 ptr) { return find_block(ptr, fragmap); }
