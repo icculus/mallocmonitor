@@ -9,6 +9,11 @@
 
 #include "dumpfile.h"
 
+#define DO_LINEAR_SEEK_TEST 0
+#define DO_REVERSE_LINEAR_SEEK_TEST 0
+#define DO_SEQUENTIAL_SKIP_SEEK_TEST 1
+#define DO_RANDOM_SKIP_SEEK_TEST 1
+
 class ProgressNotifyNoOp : public ProgressNotify
 {
 public:
@@ -43,10 +48,11 @@ static void jump_around(const char *filename, DumpFile &df)
 
     printf("%s: %u operations total.\n", filename, (unsigned int) opcount);
 
-    printf(" + linear fragmap seek...\n");
+    #if DO_LINEAR_SEEK_TEST
     ticks = 0;
     for (uint32 iter = 0; iter < ITERATIONS; iter++)
     {
+        printf(" + linear fragmap seek iteration #%d...\n", (int) iter);
         reset_tick_base();
         for (uint32 i = 0; i < opcount; i++)
         {
@@ -56,8 +62,66 @@ static void jump_around(const char *filename, DumpFile &df)
         ticks += get_ticks();
     } // for
 
-    printf(" +  (%d ticks, %d iterations == %d ticks per iteration\n",
+    printf(" +  (%d ticks, %d iterations == %d ticks per iteration)\n",
             (int) ticks, (int) ITERATIONS, (int) (ticks / ITERATIONS));
+    #endif
+
+    #if DO_REVERSE_LINEAR_SEEK_TEST
+    ticks = 0;
+    for (uint32 iter = 0; iter < ITERATIONS; iter++)
+    {
+        printf(" + reverse linear fragmap seek iteration #%d...\n", (int) iter);
+        reset_tick_base();
+        for (uint32 i = opcount-1; i >= 0; i--)
+        {
+            size_t nc = 0;
+            df.fragmapManager.get_fragmap(&df, i, nc);
+        } // for
+        ticks += get_ticks();
+    } // for
+
+    printf(" +  (%d ticks, %d iterations == %d ticks per iteration)\n",
+            (int) ticks, (int) ITERATIONS, (int) (ticks / ITERATIONS));
+    #endif
+
+    #if DO_SEQUENTIAL_SKIP_SEEK_TEST
+    ticks = 0;
+    for (uint32 iter = 0; iter < ITERATIONS; iter++)
+    {
+        printf(" + sequential skip fragmap seek iteration #%d...\n", (int) iter);
+        reset_tick_base();
+        uint32 skip = (uint32) (((float) opcount) * 0.05f);
+        for (uint32 i = 0; i < opcount; i += skip)
+        {
+            size_t nc = 0;
+            df.fragmapManager.get_fragmap(&df, i, nc);
+        } // for
+        ticks += get_ticks();
+    } // for
+
+    printf(" +  (%d ticks, %d iterations == %d ticks per iteration)\n",
+            (int) ticks, (int) ITERATIONS, (int) (ticks / ITERATIONS));
+    #endif
+
+    #if DO_RANDOM_SKIP_SEEK_TEST
+    ticks = 0;
+    for (uint32 iter = 0; iter < ITERATIONS; iter++)
+    {
+        printf(" + random skip fragmap seek iteration #%d...\n", (int) iter);
+        reset_tick_base();
+        uint32 skip = (uint32) (((float) opcount) * 0.05f);
+        for (uint32 i = 0; i < opcount; i += skip)
+        {
+            int op = rand() % opcount;
+            size_t nc = 0;
+            df.fragmapManager.get_fragmap(&df, op, nc);
+        } // for
+        ticks += get_ticks();
+    } // for
+
+    printf(" +  (%d ticks, %d iterations == %d ticks per iteration)\n",
+            (int) ticks, (int) ITERATIONS, (int) (ticks / ITERATIONS));
+    #endif
 } // jump_around
 
 
