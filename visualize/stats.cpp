@@ -62,8 +62,8 @@ int main(int argc, char **argv)
             printf("  unique/total ratio: %f\n", frameratio);
 
             printf("\n  Operations...\n");
-            size_t max = df.getOperationCount();
-            for (size_t i = 0; i < max; i++)
+            uint32 max = df.getOperationCount();
+            for (uint32 i = 0; i < max; i++)
             {
                 DumpFileOperation *op = df.getOperation(i);
                 printf("    op %d, timestamp %d: ",
