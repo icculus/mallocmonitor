@@ -4,7 +4,7 @@ DEFS += -Duint64="unsigned long long" -Dtick_t="unsigned int"
 
 CC = gcc
 OPTS = -O0
-#OPTS = -O3 -mcpu=i686 -march=pentium3 -fomit-frame-pointer
+#OPTS = -O3 -mcpu=i686 -march=pentium3 -fomit-frame-pointer -D_NDEBUG=1
 CFLAGS = $(OPTS) -pipe -g -Wall -c $(DEFS) -fexceptions -o
 LDFLAGS = -o
 DLL_LDFLAGS = -shared -o
