@@ -113,10 +113,9 @@ void MALLOCMONITOR_disconnect(void);
  *
  *     params : s == number of bytes app wanted to malloc().
  *              rc == what C runtime's malloc() returned.
- *              c == frame pointer of function that called malloc().
  *    returns : non-zero if reported to monitor daemon, zero on failure.
  */
-int MALLOCMONITOR_put_malloc(size_t s, void *rc, const void *c);
+int MALLOCMONITOR_put_malloc(size_t s, void *rc);
 
 /*
  * Tell the monitoring daemon that the application just called realloc().
@@ -124,10 +123,9 @@ int MALLOCMONITOR_put_malloc(size_t s, void *rc, const void *c);
  *     params : p == address of memory block app wanted to reallocate.
  *              s == number of bytes app wanted to realloc().
  *              rc == what C runtime's realloc() returned.
- *              c == frame pointer of function that called realloc().
  *    returns : non-zero if reported to monitor daemon, zero on failure.
  */
-int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc, const void *c);
+int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc);
 
 /*
  * Tell the monitoring daemon that the application just called memalign()
@@ -136,19 +134,17 @@ int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc, const void *c);
  *     params : b == multiple of boundary that app wants to align on.
  *              s == number of bytes app wanted to allocate.
  *              rc == what C runtime's memalign() returned.
- *              c == frame pointer of function that called memalign().
  *    returns : non-zero if reported to monitor daemon, zero on failure.
  */
-int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc, const void *c);
+int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc);
 
 /*
  * Tell the monitoring daemon that the application just called free()
  *
  *     params : p == pointer that was free()'d.
- *              c == frame pointer of function that called memalign().
  *    returns : non-zero if reported to monitor daemon, zero on failure.
  */
-int MALLOCMONITOR_put_free(void *p, const void *c);
+int MALLOCMONITOR_put_free(void *p);
 
 #ifdef __cplusplus
 }

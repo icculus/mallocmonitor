@@ -56,7 +56,7 @@ static void *override_malloc_hook(size_t s, const void *caller)
     retval = malloc(s);  /* call glibc version. */
     save_glibc_hooks();  /* update in case glibc changed them. */
 
-    if (MALLOCMONITOR_put_malloc(s, retval, caller))
+    if (MALLOCMONITOR_put_malloc(s, retval))
         set_override_hooks(); /* only restore hooks if daemon is listening */
 
     return(retval);
@@ -71,7 +71,7 @@ static void *override_realloc_hook(void *ptr, size_t s, const void *caller)
     retval = realloc(ptr, s);  /* call glibc version. */
     save_glibc_hooks();  /* update in case glibc changed them. */
 
-    if (MALLOCMONITOR_put_realloc(ptr, s, retval, caller))
+    if (MALLOCMONITOR_put_realloc(ptr, s, retval))
         set_override_hooks(); /* only restore hooks if daemon is listening */
 
     return(retval);
@@ -85,7 +85,7 @@ static void *override_memalign_hook(size_t a, size_t s, const void *caller)
     retval = memalign(a, s);  /* call glibc version. */
     save_glibc_hooks();  /* update in case glibc changed them. */
 
-    if (MALLOCMONITOR_put_memalign(a, s, retval, caller))
+    if (MALLOCMONITOR_put_memalign(a, s, retval))
         set_override_hooks(); /* only restore hooks if daemon is listening */
 
     return(retval);
@@ -98,7 +98,7 @@ static void override_free_hook(void *ptr, const void *caller)
     free(ptr);  /* call glibc version. */
     save_glibc_hooks();  /* update in case glibc changed them. */
 
-    if (MALLOCMONITOR_put_free(ptr, caller))
+    if (MALLOCMONITOR_put_free(ptr))
         set_override_hooks(); /* only restore hooks if daemon is listening */
 } /* override_free_hook */
 

@@ -68,6 +68,11 @@
         fname[0] = 0;  // !!! FIXME
     }
 
+    int get_current_callstack(void **buffer, int size)
+    {
+        return(0);  // !!! FIXME!
+    } /* get_current_callstack */
+
 #else
     #include <sys/socket.h>
     #include <netinet/in.h>
@@ -101,7 +106,15 @@
     {
         fname[0] = 0;  // !!! FIXME
     }
+
+    int get_current_callstack(void **buffer, int size)
+    {
+        return(0);  // !!! FIXME!
+    } /* get_current_callstack */
+
     #else
+
+    #include <execinfo.h>
     static inline void get_process_filename(char *fname, size_t s)
     {
         /* Holy Linux-specific, batman! */
@@ -112,6 +125,26 @@
             *fname = '\0';
         fname[s-1] = '\0';  /* just in case. */
     } /* get_process_filename */
+
+    int get_current_callstack(void **buffer, int size)
+    {
+        int rc = backtrace(buffer, size);
+
+        /*
+         * Chop off the top 4 entries if they exist: this func,
+         *  write_daemon_callstack(), MALLOCMONITOR_put_*, and the
+         *  call from the hook. Probably need a way to adjust this at
+         *  runtime.
+         */
+        if (rc < 4)
+        {
+            rc -= 4;
+            memmove(buffer, buffer + 4, rc * sizeof (void *));
+        } /* if */
+
+        return(rc);
+    } /* get_current_callstack */
+
     #endif
 
 #endif
@@ -232,16 +265,21 @@ static inline int daemon_write_sizet(size_t s)
 } /* daemon_write_operation */
 
 
-static inline int daemon_write_callstack(const void *caller)
+#define MAX_CALLSTACKS 64  /* !!! FIXME: ugh, may be more! */
+static inline int daemon_write_callstack(void)
 {
-    if (caller == NULL)  /* no callstack. */
-    {
-        if (!daemon_write_ui32(0)) return(0);
-        return(1);
-    } /* if */
+    int i;
+    void *callstack[MAX_CALLSTACKS];
+    int frames = get_current_callstack(callstack, MAX_CALLSTACKS);
 
-    /* !!! FIXME! */
-    if (!daemon_write_ui32(0)) return(0);
+    if (!daemon_write_ui32(frames)) return(0);
+
+    for (i = 0; i < frames; i++)
+    {
+        if (!daemon_write_ptr(callstack[i]))
+            return(0);
+    } /* for */
+
     return(1);
 } /* daemon_write_operation */
 
@@ -444,50 +482,49 @@ void MALLOCMONITOR_disconnect(void)
 } /* MALLOCMONITOR_disconnect */
 
 
-int MALLOCMONITOR_put_malloc(size_t s, void *rc, const void *c)
+int MALLOCMONITOR_put_malloc(size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_MALLOC)) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
-    if (!daemon_write_callstack(c)) return(0);
+    if (!daemon_write_callstack()) return(0);
     return(1);
 } /* MALLOCMONITOR_put_malloc */
 
 
-int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc, const void *c)
+int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_REALLOC)) return(0);
     if (!daemon_write_ptr(p)) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
-    if (!daemon_write_callstack(c)) return(0);
+    if (!daemon_write_callstack()) return(0);
     return(1);
 } /* MALLOCMONITOR_put_realloc */
 
 
-int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc, const void *c)
+int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_MEMALIGN)) return(0);
     if (!daemon_write_sizet(b)) return(0);
     if (!daemon_write_sizet(s)) return(0);
     if (!daemon_write_ptr(rc)) return(0);
-    if (!daemon_write_callstack(c)) return(0);
+    if (!daemon_write_callstack()) return(0);
     return(1);
 } /* MALLOCMONITOR_put_memalign */
 
 
-int MALLOCMONITOR_put_free(void *p, const void *c)
+int MALLOCMONITOR_put_free(void *p)
 {
     if (!verify_connection()) return(0);
     if (!daemon_write_operation(MONITOR_OP_FREE)) return(0);
     if (!daemon_write_ptr(p)) return(0);
-    if (!daemon_write_callstack(c)) return(0);
+    if (!daemon_write_callstack()) return(0);
     return(1);
 } /* MALLOCMONITOR_put_free */
 
 /* end of malloc_monitor_client.c ... */
-
 

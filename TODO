@@ -2,5 +2,4 @@
 - The "[file]" hostname is a bit of a hack.
 - The file/socket seperation is a bit messy.
 - Pause/Unpause memory pattern logging programmatically.
-- Need logic to walk the stack. glibc supplies this.
 

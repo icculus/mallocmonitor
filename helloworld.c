@@ -25,7 +25,7 @@ static void *mymalloc(size_t s)
 
     #if MANUALLY_MONITOR
     if (MALLOCMONITOR_connected())
-        MALLOCMONITOR_put_malloc(s, retval, NULL);
+        MALLOCMONITOR_put_malloc(s, retval);
     #endif
 
     return(retval);
@@ -37,7 +37,7 @@ static void myfree(void *ptr)
     free(ptr);
     #if MANUALLY_MONITOR
     if (MALLOCMONITOR_connected())
-        MALLOCMONITOR_put_free(ptr, NULL);
+        MALLOCMONITOR_put_free(ptr);
     #endif
 } /* myfree */
 
