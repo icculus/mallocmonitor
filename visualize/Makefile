@@ -3,7 +3,9 @@ DEFS += -Duint8="unsigned char" -Duint32="unsigned int"
 DEFS += -Duint64="unsigned long long" -Dtick_t="unsigned int"
 
 CC = gcc
-CFLAGS = -O0 -pipe -g -Wall -c $(DEFS) -fexceptions -o
+OPTS = -O0
+#OPTS = -O3 -mcpu=i686 -march=pentium3 -fomit-frame-pointer
+CFLAGS = $(OPTS) -pipe -g -Wall -c $(DEFS) -fexceptions -o
 LDFLAGS = -o
 DLL_LDFLAGS = -shared -o
 LD = g++
