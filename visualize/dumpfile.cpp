@@ -1,3 +1,10 @@
+/*
+ * Turns a dumpfile into meaningful information.
+ *
+ * Written by Ryan C. Gordon (icculus@icculus.org)
+ *
+ * Please see the file LICENSE in the source's root directory.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
