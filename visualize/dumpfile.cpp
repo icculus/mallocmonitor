@@ -139,11 +139,43 @@ FragMapSnapshot::~FragMapSnapshot()
 
 FragMapNode **FragMapManager::get_fragmap(size_t op_index, size_t &nodecount)
 {
-    return(NULL);  // !!! FIXME: write me!
+    // Find the closest snapshot...
+    // !!! FIXME: This is slow.
+    for (uint32 i = 0; i < total_snapshots; i++)
+    {
+        FragMapSnapshot *ss = snapshots[i];
+        if (ss->operation_index == op_index)  // exact match!
+        {
+            nodecount = ss->total_nodes;
+            return(ss->nodes);
+        } // if
+
+        if (ss->operation_index < op_index)  // we passed it.
+        {
+            delete ss;
+            empty_hashtable();
+            if (i != 0)
+                build_fragmap_from_snapshot(snapshots[i-1]);
+            walk_fragmap_to_opidx(op_index);
+            snapshots[i] = create_snapshot();
+        } // if
+    } // for
 } // FragMapManager::get_fragmap
 
 
 #define FRAGMAPMANAGER_QUICKSORT_THRESHOLD 4
+
+static inline int cmpfn(FragMapNode *a, FragMapNode *b)
+{
+    return(b->ptr - a->ptr);
+} // cmpfn
+
+static inline void swapfn(FragMapNode **a, uint32 e1, uint32 e2)
+{
+    FragMapNode *tmp = a[e1];
+    a[e1] = a[e2];
+    a[e2] = tmp;
+} // swapfn
 
 void FragMapManager::bubble_sort(FragMapNode **a, uint32 lo, uint32 hi)
 {
@@ -155,11 +187,9 @@ void FragMapManager::bubble_sort(FragMapNode **a, uint32 lo, uint32 hi)
         sorted = true;
         for (i = lo; i < hi; i++)
         {
-            if (a[i]->ptr > a[i+1]->ptr)
+            if (cmpfn(a[i], a[i+1]) > 0)
             {
-                FragMapNode *tmp = a[i];
-                a[i] = a[i+1];
-                a[i+1] = tmp;
+                swapfn(a[i], a[i+1]);
                 sorted = false;
             } /* if */
         } /* for */
@@ -179,47 +209,22 @@ void FragMapManager::quick_sort(FragMapNode **a, uint32 lo, uint32 hi)
     else
     {
         i = (hi + lo) >> 1;
-
-        if (a[lo]->ptr > a[i]->ptr)
-        {
-            tmp = a[i];
-            a[i] = a[lo];
-            a[lo] = tmp;
-        } // if
-
-        if (a[lo]->ptr > a[hi]->ptr)
-        {
-            tmp = a[hi];
-            a[hi] = a[lo];
-            a[lo] = tmp;
-        } // if
-
-        if (a[i]->ptr > a[hi]->ptr)
-        {
-            tmp = a[i];
-            a[i] = a[hi];
-            a[hi] = tmp;
-        } // if
+        if (cmpfn(a[lo], a[i]) > 0) swapfn(a, i, lo);
+        if (cmpfn(a[lo], a[hi]) > 0) swapfn(a, lo, hi);
+        if (cmpfn(a[i], a[hi]) > 0) swapfn(a, i, hi);
 
         j = hi - 1;
-        tmp = a[j];
-        a[j] = a[i];
-        a[i] = tmp;
+        swapfn(a, j, i);
         i = lo;
         v = j;
         while (1)
         {
-            while (a[++i]->ptr < a[v]->ptr) { /* do nothing */ }
-            while (a[--j]->ptr > a[v]->ptr) { /* do nothing */ }
-            if (j < i)
-                break;
-            tmp = a[i];
-            a[i] = a[j];
-            a[j] = tmp;
+            while (cmpfn(a[++i], a[v]) < 0) { /* do nothing */ }
+            while (cmpfn(a[--j], a[v]) > 0) { /* do nothing */ }
+            if (j < i) break;
+            swapfn(a, i, j);
         } // while
-        tmp = a[i];
-        a[i] = a[hi-1];
-        a[hi-1] = tmp;
+        swapfn(a, i, hi-1);
         quick_sort(a, lo, j);
         quick_sort(a, i+1, hi);
     } // else
@@ -233,27 +238,34 @@ void FragMapManager::sort(FragMapNode **entries, uint32 max)
      *   http://www.cs.ubc.ca/spider/harrison/Java/sorting-demo.html
      */
     quick_sort(entries, 0, max - 1);
-} /* FragMapManager::sort */
+} // FragMapManager::sort
 
 
-void FragMapManager::create_snapshot()
+FragMapSnapshot *FragMapManager::create_snapshot()
 {
-    uint32 count = 0;
-    FragMapSnapshot *snapshot;
+    uint32 cnt = 0;
+    FragMapSnapshot *ss;
 
-    snapshot = new FragMapSnapshot(total_nodes, current_operation);
+    ss = new FragMapSnapshot(total_nodes, current_operation);
 
     for (int i = 0; i <= 0xFFFF; i++)
     {
         FragMapNode *node = fragmap[i];
         while (node != NULL)
         {
-            snapshot->nodes[count++] = FragMapNodePool::get(node->ptr, node->size);
+            ss->nodes[cnt++] = FragMapNodePool::get(node->ptr, node->size);
             node = node->right;
         } // while
     } // for
 
-    sort(snapshot->nodes, total_nodes);
+    sort(ss->nodes, total_nodes);
+    return(ss);
+} // FragMapManager::create_snapshot
+
+
+void FragMapManager::add_snapshot()
+{
+    FragMapSnapshot *snapshot = create_snapshot();
 
     // !!! FIXME: realloc? yuck!
     total_snapshots++;
@@ -261,7 +273,7 @@ void FragMapManager::create_snapshot()
                     total_snapshots * sizeof (FragMapSnapshot *));
     assert(snapshots != NULL);  // !!! FIXME: lame.
     snapshots[total_snapshots-1] = snapshot;
-} // FragMapManager::create_snapshot
+} // FragMapManager::add_snapshot
 
 
 FragMapNode *FragMapNodePool::freepool = NULL;
@@ -338,8 +350,6 @@ FragMapManager::FragMapManager()
 
 FragMapManager::~FragMapManager()
 {
-    for (size_t i = 0; i <= 0xFFFF; i++)
-        FragMapNodePool::putlist(fragmap[i]);
 
     for (size_t i = 0; i < total_snapshots; i++)
         delete snapshots[i];
@@ -349,6 +359,14 @@ FragMapManager::~FragMapManager()
     FragMapNodePool::flush();
 } // FragMapManager::~FragMapManager
 
+
+inline void FragMapManager::empty_hashtable()
+{
+    for (size_t i = 0; i <= 0xFFFF; i++)
+        FragMapNodePool::putlist(fragmap[i]);
+
+    memset(fragmap, '\0', (0xFFFF + 1) * sizeof (FragMapNode *));
+} // FragMapManager::empty_hashtable
 
 inline uint16 FragMapManager::calculate_hash(dumpptr ptr)
 {
@@ -535,7 +553,7 @@ inline void DumpFile::read_ui32(uint32 &ui32) throw (const char *)
         BYTESWAP32(ui32);
 } // DumpFile::read_ui32
 
-inline void DumpFile::read_ui64(dumpptr &ui64) throw (const char *)
+inline void DumpFile::read_ui64(uint64 &ui64) throw (const char *)
 {
     read_block(&ui64, sizeof (ui64));
     if (byte_order != platform_byteorder)

@@ -255,7 +255,9 @@ protected:
     uint32 total_snapshots;
     void insert_block(dumpptr ptr, size_t s);
     void remove_block(dumpptr ptr);
-    void create_snapshot();
+    FragMapSnapshot *create_snapshot();
+    void add_snapshot();
+    inline void empty_hashtable();
 
 private:
     FragMapNode **fragmap;
