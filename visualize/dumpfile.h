@@ -194,7 +194,7 @@ class FragMapNode
 public:
     FragMapNode(uint64 p=0x00000000, size_t s=0) :
         ptr(p), size(s), dead(false), left(NULL), right(NULL) {}
-    //~FragMapNode();
+    // !!! FIXME: ~FragMapNode();
     uint64 ptr;
     size_t size;
     bool dead;
@@ -241,12 +241,12 @@ public:
 class FragMapManager
 {
 public:
-    FragMapManager() : snapshots(NULL), total_snapshots(0) {}
+    FragMapManager() : snapshots(NULL), total_snapshots(0), fragmap(NULL) {}
     ~FragMapManager();
-    void add_malloc(size_t size, uint64 rc);
-    void add_realloc(uint64 ptr, size_t size, uint64 rc);
-    void add_memalign(size_t b, size_t a, uint64 rc);
-    void add_free(uint64 ptr);
+    void add_malloc(DumpFileOperation *op);
+    void add_realloc(DumpFileOperation *op);
+    void add_memalign(DumpFileOperation *op);
+    void add_free(DumpFileOperation *op);
     void done_adding(ProgressNotify &pn);
 
 protected:
@@ -254,11 +254,11 @@ protected:
     size_t total_snapshots;
     void insert_block(uint64 ptr, size_t s);
     FragMapNode *find_block(uint64 ptr, FragMapNode *node);
-    FragMapNode *find_block(uint64 ptr) { return find_block(ptr, &fragmap); }
+    FragMapNode *find_block(uint64 ptr) { return find_block(ptr, fragmap); }
     void remove_block(uint64 ptr);
 
 private:
-    FragMapNode fragmap;  // static root node is always address 0x00000000...
+    FragMapNode *fragmap;
 };
 
 
@@ -285,6 +285,7 @@ public:
     uint32 getOperationCount() { return total_operations; }
     DumpFileOperation *getOperation(size_t idx) { return operations[idx]; }
     CallstackManager callstackManager;
+    FragMapManager fragmapManager;
 
 protected:
     uint8 protocol_version; /* dumpfile format version. */

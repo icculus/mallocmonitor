@@ -124,18 +124,14 @@ CallstackManager::CallstackNode::~CallstackNode()
 
 FragMapManager::~FragMapManager()
 {
+    delete fragmap;
     delete snapshots;
 } // FragMapManager destructor
 
 
 void FragMapManager::insert_block(uint64 ptr, size_t size)
 {
-    if (ptr == 0x00000000)
-        return;
-
-    // !!! FIXME: malloc(0) is a legitimate call on Linux (ANSI?), apparently.
-
-    FragMapNode *node = &fragmap;
+    FragMapNode *node = fragmap;
     FragMapNode **child = NULL;
 
     while (node)
@@ -161,7 +157,9 @@ void FragMapManager::insert_block(uint64 ptr, size_t size)
         node = *child;
     } // while
 
-    assert(false);  // this should never happen.
+    // you should only be here if the fragmap is totally empty.
+    assert(fragmap == NULL);
+    fragmap = new FragMapNode(ptr, size);
 } // FragMapManager::insert_block
 
 
@@ -184,9 +182,6 @@ FragMapNode *FragMapManager::find_block(uint64 ptr, FragMapNode *node)
 
 void FragMapManager::remove_block(uint64 ptr)
 {
-    if (ptr == 0x00000000)
-        return;  // don't delete static root.
-
     FragMapNode *node = find_block(ptr);
 
     // "Removing" a node means flagging it as "dead".
@@ -200,34 +195,34 @@ void FragMapManager::remove_block(uint64 ptr)
 } // FragMapManager::remove_block
 
 
-void FragMapManager::add_malloc(size_t size, uint64 rc)
+void FragMapManager::add_malloc(DumpFileOperation *op)
 {
-    insert_block(rc, size);
+    insert_block(op->op_malloc.retval, op->op_malloc.size);
 } // FragMapManager::add_malloc
 
 
-void FragMapManager::add_realloc(uint64 ptr, size_t size, uint64 rc)
+void FragMapManager::add_realloc(DumpFileOperation *op)
 {
     // !!! FIXME: Is realloc(NULL, 0) illegal?
 
     // !!! FIXME: Don't remove and reinsert if ptr == rc && size > 0...
-    if (ptr)
-        remove_block(ptr);
+    if (op->op_realloc.ptr)
+        remove_block(op->op_realloc.ptr);
 
-    if (size)
-        insert_block(rc, size);
+    if (op->op_realloc.size)
+        insert_block(op->op_realloc.retval, op->op_realloc.size);
 } // FragMapManager::add_realloc
 
 
-void FragMapManager::add_memalign(size_t b, size_t a, uint64 rc)
+void FragMapManager::add_memalign(DumpFileOperation *op)
 {
-    insert_block(rc, a);
+    insert_block(op->op_memalign.retval, op->op_memalign.size);
 } // FragMapManager::add_memalign
 
 
-void FragMapManager::add_free(uint64 ptr)
+void FragMapManager::add_free(DumpFileOperation *op)
 {
-    remove_block(ptr);
+    remove_block(op->op_free.ptr);
 } // FragMapManager::add_free
 
 
@@ -430,6 +425,7 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
                         //printf("malloc\n");
                         read_sizet(op->op_malloc.size);
                         read_ptr(op->op_malloc.retval);
+                        fragmapManager.add_malloc(op);
                         break;
 
                     case DUMPFILE_OP_REALLOC:
@@ -437,6 +433,7 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
                         read_ptr(op->op_realloc.ptr);
                         read_sizet(op->op_realloc.size);
                         read_ptr(op->op_realloc.retval);
+                        fragmapManager.add_realloc(op);
                         break;
 
                     case DUMPFILE_OP_MEMALIGN:
@@ -444,11 +441,13 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
                         read_sizet(op->op_memalign.boundary);
                         read_sizet(op->op_memalign.size);
                         read_ptr(op->op_memalign.retval);
+                        fragmapManager.add_memalign(op);
                         break;
 
                     case DUMPFILE_OP_FREE:
                         //printf("free\n");
                         read_sizet(op->op_free.ptr);
+                        fragmapManager.add_free(op);
                         break;
 
                     default:
@@ -475,6 +474,7 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
         } // while
 
         callstackManager.done_adding(pn);
+        fragmapManager.done_adding(pn);
 
         if (op != NULL)
             op->next = NULL;
