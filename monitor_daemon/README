@@ -1,0 +1,8 @@
+This isn't used, it's just a half-complete example of how to talk to a
+ malloc monitoring client. This is what can be listening on the other side
+ of a MALLOCMONITOR_connect() call.
+
+This may be out of date at any time.
+
+--ryan.
+

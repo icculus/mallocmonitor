@@ -250,6 +250,9 @@ sub reap_kids {
 
 my $bigendian = 0;
 my $sizeofptr = 0;
+my $sizeofticks = 0;
+my $monitor_client_fname = '';
+my $monitor_client_pid = 0;
 my $monitor_client_id = '';
 
 sub read_handshake {
@@ -278,9 +281,15 @@ sub read_handshake {
     $sizeofptr = read_ui8_timeout();  # only handles 32 and 64-bit right now.
     return 0 if (($sizeofptr != 4) and ($sizeofptr != 8));
     # !!! TODO my $passwd = read_block(64, "\0");
+    $sizeofticks = read_ui8_timeout();  # only handles 32 and 64-bit right now.
+    return 0 if (($sizeofticks != 4) and ($sizeofticks != 8));
     $monitor_client_id = read_block(64, "\0");
     return 0 if (not defined $monitor_client_id);
     return 0 if (not $monitor_client_id =~ /\A[a-zA-Z0-9]+\Z/);
+    $monitor_client_fname = read_block(1024, "\0");
+    return 0 if (not defined $monitor_client_fname);
+    $monitor_client_pid = read_ui32();
+    return 0 if (not defined $monitor_client_pid);
     return 1;
 }
 
@@ -289,9 +298,11 @@ sub read_callstack {
     my $count = read_ui32();
     syslogwarn("unexpected connection drop") if not defined $count;
 
-    #debug("   - callstack : $count frames");
-    # !!! FIXME: expect zero stack frames right now.  :/
-    #return(($count == 0) ? 1 : 0);
+    while ($count) {
+        my $frame = read_ptr();
+        syslogwarn("unexpected connection drop") if not defined $frame;
+        $count--;
+    }
     return 1;
 }
 
@@ -320,12 +331,19 @@ sub read_ptr {
     return $val;
 }
 
-#use constant MONITOR_OP_NOOP     => 0;
-#use constant MONITOR_OP_GOODBYE  => 1;
-#use constant MONITOR_OP_MALLOC   => 2;
-#use constant MONITOR_OP_REALLOC  => 3;
-#use constant MONITOR_OP_MEMALIGN => 4;
-#use constant MONITOR_OP_FREE     => 5;
+sub read_ticks {
+    #return(read_native_word('ticks'));
+    my $val = (($sizeofticks == 4) ? read_ui32() : read_ui64());
+    syslogwarn('unexpected connection drop'), return 0 if not defined $val;
+    return $val;
+}
+
+use constant MONITOR_OP_NOOP     => 0;
+use constant MONITOR_OP_GOODBYE  => 1;
+use constant MONITOR_OP_MALLOC   => 2;
+use constant MONITOR_OP_REALLOC  => 3;
+use constant MONITOR_OP_MEMALIGN => 4;
+use constant MONITOR_OP_FREE     => 5;
 
 sub do_noop_operation {
     debug(' + NOOP operation.');
@@ -339,6 +357,7 @@ sub do_goodbye_operation {
 
 sub do_malloc_operation {
     debug(' + MALLOC operation.');
+    my $t = read_ticks(); return 0 if (not defined $t);
     my $s = read_sizet(); return 0 if (not defined $s);
     my $rc = read_ptr(); return 0 if (not defined $rc);
     my $c = read_callstack(); return 0 if (not defined $c);
@@ -348,6 +367,7 @@ sub do_malloc_operation {
 
 sub do_realloc_operation {
     debug(' + REALLOC operation.');
+    my $t = read_ticks(); return 0 if (not defined $t);
     my $p = read_ptr(); return 0 if (not defined $p);
     my $s = read_sizet(); return 0 if (not defined $s);
     my $rc = read_ptr(); return 0 if (not defined $rc);
@@ -358,6 +378,7 @@ sub do_realloc_operation {
 
 sub do_memalign_operation {
     debug(' + MEMALIGN operation.');
+    my $t = read_ticks(); return 0 if (not defined $t);
     my $b = read_sizet(); return 0 if (not defined $b);
     my $s = read_sizet(); return 0 if (not defined $s);
     my $rc = read_ptr(); return 0 if (not defined $rc);
@@ -368,6 +389,7 @@ sub do_memalign_operation {
 
 sub do_free_operation {
     debug(' + FREE operation.');
+    my $t = read_ticks(); return 0 if (not defined $t);
     my $p = read_ptr(); return 0 if (not defined $p);
     my $c = read_callstack(); return 0 if (not defined $c);
     # !!! FIXME: do something.
@@ -378,12 +400,12 @@ sub do_operation {
     my $op = read_ui8();
     return 0 if not defined $op;
 
-    return do_noop_operation() if ($op == 0);
-    return do_goodbye_operation() if ($op == 1);
-    return do_malloc_operation() if ($op == 2);
-    return do_realloc_operation() if ($op == 3);
-    return do_memalign_operation() if ($op == 4);
-    return do_free_operation() if ($op == 5);
+    return do_noop_operation() if ($op == MONITOR_OP_NOOP);
+    return do_goodbye_operation() if ($op == MONITOR_OP_GOODBYE);
+    return do_malloc_operation() if ($op == MONITOR_OP_MALLOC);
+    return do_realloc_operation() if ($op == MONITOR_OP_REALLOC);
+    return do_memalign_operation() if ($op == MONITOR_OP_MEMALIGN);
+    return do_free_operation() if ($op == MONITOR_OP_FREE);
 
     debug("Unknown operation $op");
     return 0;
@@ -400,6 +422,7 @@ sub server_mainline {
     debug("   - protocol version == $protocol_version");
     debug("   - byteorder == " . (($bigendian) ? "bigendian":"littleendian"));
     debug("   - sizeofptr == $sizeofptr");
+    debug("   - sizeofticks == $sizeofticks");
     debug("   - clientid == '$monitor_client_id'");
 
     # no longer care if client is quiet for long amounts of time.
