@@ -15,8 +15,74 @@
 
 #include <stdio.h>
 
+/*
+ * A callback interface for presenting a progress UI to the end user, and
+ *  pumping a GUI's event queue. "update" is called periodically during
+ *  dumpfile processing (an expensive operation). "status" is the name
+ *  of the operation ("parsing raw data" or whatnot), and percent is the
+ *  operation's progress...zero to 100.
+ */
+class ProgressNotify
+{
+public:
+    virtual void update(const char *status, int percent) = 0;
+};
 
-typedef void (*DumpFileProgress)(const char *status, int percent);
+class ProgressNotifyDummy : public ProgressNotify
+{
+    virtual void update(const char *status, int percent) {}
+};
+
+
+/*
+ * The CallstackManager efficiently stores and retrieves callstack data
+ *  from the dumpfile. It minimizes the amount of memory needed by
+ *  aggressively caching duplicate information.
+ *
+ * The DumpFile class maintains an instance of CallstackManager, and feeds
+ *  it callstacks from the dumpfile. The CallstackManager feeds back a unique
+ *  ID that represents that callstack. The original callstack data can be
+ *  recovered via this ID. If a callstack has already been seen by the
+ *  CallstackManager, it'll feed back the original ID.
+ */
+class CallstackManager
+{
+public:
+    typedef void *callstackid;  // Consider this opaque.
+
+    CallstackManager() : total_frames(0), unique_frames(0) {}
+    callstackid add(uint64 *ptrs, size_t framecount);
+    void done_adding(ProgressNotify &pn);
+    size_t framecount(callstackid id);
+    void get(callstackid id, uint64 *ptrs);
+    size_t getTotalCallstackFrames() { return(total_frames); }
+    size_t getUniqueCallstackFrames() { return(unique_frames); }
+
+protected:
+    /*
+     * This is what the CallstackManager::callstackid type really is; an
+     *  opaque pointer to a CallstackNode. The guts aren't accessible to
+     *  the application, though: they get the pertinent data via
+     *  CallstackManager.
+     */
+    class CallstackNode
+    {
+    public:
+        CallstackNode(uint64 _ptr=0, CallstackNode *p=NULL, size_t d=0)
+            : ptr(_ptr), depth(d), parent(p), children(NULL), sibling(NULL) {}
+        ~CallstackNode();
+        uint64 ptr;
+        size_t depth;
+        CallstackNode *parent;
+        CallstackNode *children;
+        CallstackNode *sibling;
+    }; // CallstackNode
+
+    CallstackNode root;
+    size_t total_frames;
+    size_t unique_frames;
+}; // CallstackManager
+
 
 typedef enum
 {
@@ -30,99 +96,21 @@ typedef enum
 } dumpfile_operation_t;
 
 
-class CallstackNode
-{
-public:
-    CallstackNode(uint64 _ptr=0, CallstackNode *p=NULL, size_t d=0)
-        : ptr(_ptr), depth(d), parent(p), children(NULL), sibling(NULL) {}
-    ~CallstackNode();
-    uint64 ptr;
-    size_t depth;
-    CallstackNode *parent;
-    CallstackNode *children;
-    CallstackNode *sibling;
-}; // CallstackNode
-
-
-class CallstackManager
-{
-public:
-    typedef void *callstackid;  // Consider this opaque.
-
-    callstackid add(uint64 *ptrs, size_t framecount);
-    void done_adding(DumpFileProgress dfp);
-    size_t framecount(callstackid id);
-    void get(callstackid id, uint64 *ptrs);
-
-protected:
-    CallstackNode root;
-}; // CallstackManager
-
-
-class BadBehaviourList
-{
-public:
-    // !!! FIXME: write this!
-};
-
-
-// Fragmentation Map tracking...
-
-// How this works:
-//  We build up "snapshots" that represent the fragmentation map every X
-//  memory operations. We use these sort of like MPEG "I-Frames"...a
-//  snapshot is a complete representation of the memory usage at that moment,
-//  then you can iterate through the memory operations from there to find
-//  a moment's accurate representation fairly efficiently.
-//
-// Snapshots move back and forth as needed; if you request a snapshot, the
-//  FragMapManager will find the closest snapsnot and update it to the
-//  timestamp requested. Over time, the snapshots will be in variable
-//  positions instead of every X operations.
-//
-// !!! FIXME: (this isn't implemented yet)
-class FragMapNode
-{
-public:
-    uint64 ptr;
-    size_t size;
-};
-
-class FragMapSnapshot
-{
-public:
-    FragMapNode *nodes;
-    size_t total_nodes;
-};
-
-class FragMapManager
-{
-public:
-    void add_malloc(size_t size, uint64 rc);
-    void add_realloc(uint64 ptr, size_t size, uint64 rc);
-    void add_memalign(size_t b, size_t a, uint64 rc);
-    void add_free(uint64 ptr);
-    void done_adding(DumpFileProgress dfp);
-
-protected:
-    FragMapSnapshot *snapshots;
-    size_t total_snapshots;
-
-private:
-    // !!! FIXME: hashtable goes here.  :/
-};
-
-
 class DumpFile;
 
 /*
- * This entire class is READ-ONLY!
+ * This class represents one operation (malloc, realloc, free, etc) in
+ *  the dumpfile. Basically the end result of parsing a dumpfile is
+ *  several views of a collection of operations.
+ *
+ * As far as your application is concerned, this entire class is READ-ONLY!
  */
 class DumpFileOperation
 {
 public:
     dumpfile_operation_t getOperationType() { return optype; }
     tick_t getTimestamp() { return timestamp; }
+    CallstackManager::callstackid getCallstackId() { return callstack; }
 
     union  /* read only! */
     {
@@ -161,7 +149,122 @@ protected:
 };
 
 
+
+class BadBehaviourList
+{
+public:
+    // !!! FIXME: write this!
+};
+
+
 /*
+ * Fragmentation Map tracking...
+ *
+ * How this works:
+ *  We build up "snapshots" that represent the fragmentation map every X
+ *  memory operations. We use these sort of like MPEG "I-Frames"...a
+ *  snapshot is a complete representation of the memory usage at that moment,
+ *  then you can iterate through the memory operations from there to find
+ *  a moment's accurate representation fairly efficiently.
+ *
+ * Snapshots move back and forth as needed; if you request a snapshot, the
+ *  FragMapManager will find the closest snapsnot and update it to the
+ *  timestamp requested. Over time, the snapshots will be in variable
+ *  positions instead of every X operations, but this implementation detail
+ *  is hidden from the application.
+ *
+ * The DumpFile class maintains an instance of FragMapManager. The application
+ *  talks to this FragMapManager and requests a snapshot; this is given to the
+ *  app as a READ ONLY linked list of FragMapNode objects, ordered by
+ *  address of allocated block, lowest to highest. This list is not to be
+ *  deallocated or modified by the app, and is guaranteed to be valid until
+ *  a new snapshot is requested.
+ */
+
+
+/*
+ * These nodes are actually used in two ways; internally, when updating a
+ *  snapshot, they represent a B-tree, and "left" and "right" are pointers
+ *  to children. When these are used in snapshots for the application, the
+ *  tree is flattened into a doubly linked list, in which case "left" and
+ *  "right" are used to iterate the linear data set.
+ */
+class FragMapNode
+{
+public:
+    FragMapNode(uint64 p=0x00000000, size_t s=0) :
+        ptr(p), size(s), dead(false), left(NULL), right(NULL) {}
+    //~FragMapNode();
+    uint64 ptr;
+    size_t size;
+    bool dead;
+    FragMapNode *left;
+    FragMapNode *right;
+};
+
+/*
+ * This is used internally by the FragMapManager to keep track of created
+ *  snapshots.
+ */
+class FragMapSnapshot
+{
+public:
+    FragMapNode *nodes;
+    size_t total_nodes;
+    size_t operation_index;
+};
+
+
+/*
+ * The FragMapManager keeps an ongoing working set of the memory space,
+ *  which is just a B-Tree...this lets us insert and remove allocated blocks
+ *  into the FragMap with pretty good efficiency, and makes it trivial to
+ *  flatten the tree into a sorted linked list quickly when making
+ *  snapshots. A hashtable might be faster for insertion and lookup, in this
+ *  case, but the free sorting we get when flattening the tree is pretty much
+ *  unbeatable.
+ *
+ * The typical application usage patterns for memory seem to suggest that
+ *  a large portion of the allocations are either extremely short lived
+ *  (allocate scratch memory, work in it, free it, possibly in the same
+ *  function), or permanent (allocate an object at init time, delete it
+ *  during process termination). This means that our tree is going to
+ *  quickly become lopsided, with a few allocations to the left, and
+ *  most to the right. It is worth rebalancing the tree every few snapshots
+ *  to keep insertions and lookups fast.
+ *
+ * Obviously, trees aren't a good representation for the application, since
+ *  they'll want the memory layout from beginning to end in a linear order,
+ *  easy to iterate over, which is the entire purpose of flattening the tree
+ *  at snapshot time.
+ */
+class FragMapManager
+{
+public:
+    FragMapManager() : snapshots(NULL), total_snapshots(0) {}
+    ~FragMapManager();
+    void add_malloc(size_t size, uint64 rc);
+    void add_realloc(uint64 ptr, size_t size, uint64 rc);
+    void add_memalign(size_t b, size_t a, uint64 rc);
+    void add_free(uint64 ptr);
+    void done_adding(ProgressNotify &pn);
+
+protected:
+    FragMapSnapshot *snapshots;
+    size_t total_snapshots;
+    void insert_block(uint64 ptr, size_t s);
+    FragMapNode *find_block(uint64 ptr, FragMapNode *node);
+    FragMapNode *find_block(uint64 ptr) { return find_block(ptr, &fragmap); }
+    void remove_block(uint64 ptr);
+
+private:
+    FragMapNode fragmap;  // static root node is always address 0x00000000...
+};
+
+
+/*
+ * This is the application's interface to all the data in a dumpfile.
+ *
  * Constructing a dumpfile can take a LOT of processing and allocate a
  *  ton of memory! Since the constructor may block for a long time, it
  *  offers a callback you can use to pump your event queue or give updates.
@@ -169,7 +272,8 @@ protected:
 class DumpFile
 {
 public:
-    DumpFile(const char *fname, DumpFileProgress dfp=NULL) throw (const char *);
+    DumpFile(const char *fname, ProgressNotify &pn) throw (const char *);
+    DumpFile(const char *fname) throw (const char *);
     ~DumpFile();
     uint8 getFormatVersion() { return protocol_version; }
     uint8 platformIsBigendian() { return (byte_order == 1); }
@@ -180,7 +284,7 @@ public:
     uint32 getProcessId() { return pid; }
     uint32 getOperationCount() { return total_operations; }
     DumpFileOperation *getOperation(size_t idx) { return operations[idx]; }
-    CallstackManager callstacks;
+    CallstackManager callstackManager;
 
 protected:
     uint8 protocol_version; /* dumpfile format version. */
@@ -193,6 +297,7 @@ protected:
     DumpFileOperation **operations; /* the ops in chronological order. */
 
 private:
+    void parse(const char *fname, ProgressNotify &pn) throw (const char *);
     void destruct();
     inline void read_block(void *ptr, size_t size) throw (const char *);
     inline void read_ui8(uint8 &ui8) throw (const char *);
@@ -201,9 +306,9 @@ private:
     inline void read_ptr(uint64 &ptr) throw (const char *);
     inline void read_sizet(uint64 &sizet) throw (const char *);
     inline void read_timestamp(tick_t &t) throw (const char *);
-    inline void read_callstack() throw (const char *);
+    inline void read_callstack(CallstackManager::callstackid &id) throw (const char *);
     inline void read_asciz(char *&str) throw (const char *);
-    FILE *io;
+    FILE *io;  // used during parsing...
 };
 
 #endif

@@ -20,7 +20,6 @@ static inline int is_bigendian(void)
 #define BYTESWAP32(x) throw("byteswapping not implemented yet!")
 #define BYTESWAP64(x) throw("byteswapping not implemented yet!")
 
-
 CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t framecount)
 {
     CallstackNode *parent = &this->root;  // top of tree.
@@ -30,7 +29,9 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
     // assume everything is coming from main(), so start from the back so
     //  we put it at the top of the tree. This will result in less dupes,
     //  as nodes that have common ancestry will share common nodes.
-    ptrs += framecount;
+    ptrs += (framecount - 1);
+
+    total_frames += framecount;
 
     while ((node != NULL) && (framecount))
     {
@@ -38,6 +39,7 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
             node = node->sibling;
         else  // matches, check next level...
         {
+            // !!! FIXME: move matching node to front of list...
             ptrs--;
             framecount--;
             parent = node;
@@ -47,9 +49,11 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
 
     // (framecount == 0) here means a complete match with existing branch.
 
+    unique_frames += framecount;
+
     while (framecount)  // build any missing nodes...
     {
-        node = new CallstackNode(*ptrs, parent, origframecount - framecount);
+        node = new CallstackNode(*ptrs, parent, (origframecount-framecount)+1);
         node->sibling = parent->children;
         parent->children = node;
         parent = node;
@@ -57,11 +61,14 @@ CallstackManager::callstackid CallstackManager::add(uint64 *ptrs, size_t frameco
         framecount--;
     } // if
 
+    if (node == NULL)
+        return((callstackid) &root);
+
     return((callstackid) node);   // bottom of the callstack ("main", etc).
 } // CallstackManager::add
 
 
-void CallstackManager::done_adding(DumpFileProgress dfp)
+void CallstackManager::done_adding(ProgressNotify &pn)
 {
     // no-op in this implementation
 } // CallstackManager::done_adding
@@ -69,14 +76,15 @@ void CallstackManager::done_adding(DumpFileProgress dfp)
 
 size_t CallstackManager::framecount(callstackid id)
 {
-    return(((CallstackNode *) id)->depth);
+    return( ((CallstackNode *) id)->depth);
 } // CallstackManager::framecount
 
 
 void CallstackManager::get(callstackid id, uint64 *ptrs)
 {
     CallstackNode *node = (CallstackNode *) id;
-    while (node)
+    size_t depth = node->depth;
+    while (depth--)
     {
         *ptrs = node->ptr;
         ptrs++;
@@ -87,7 +95,7 @@ void CallstackManager::get(callstackid id, uint64 *ptrs)
 
 // CallstackManager automatically deletes the root node, which causes the
 //  whole tree to collapse.
-CallstackNode::~CallstackNode()
+CallstackManager::CallstackNode::~CallstackNode()
 {
     CallstackNode *kid = this->children;
     while (kid)
@@ -97,6 +105,122 @@ CallstackNode::~CallstackNode()
         kid = next;
     } // while
 } // CallstackNode destructor
+
+
+FragMapManager::~FragMapManager()
+{
+    delete snapshots;
+} // FragMapManager destructor
+
+
+void FragMapManager::insert_block(uint64 ptr, size_t size)
+{
+    if (ptr == 0x00000000)
+        return;
+
+    // !!! FIXME: malloc(0) is a legitimate call on Linux (ANSI?), apparently.
+
+    FragMapNode *node = &fragmap;
+    FragMapNode **child = NULL;
+
+    while (node)
+    {
+        uint64 nodeptr = node->ptr;
+
+        if (ptr == nodeptr)   // revive a dead node?
+        {
+            assert(node->dead);
+            node->dead = false;
+            node->size = size;
+            return;
+        } // if
+
+        child = (ptr < nodeptr) ? &node->left : &node->right;
+        if (*child == NULL)  // if null, then this is our insertion point!
+        {
+            *child = new FragMapNode(ptr, size);  // !!! FIXME: pool these!
+            return;
+        } // if
+
+        // keep looking...
+        node = *child;
+    } // while
+
+    assert(false);  // this should never happen.
+} // FragMapManager::insert_block
+
+
+FragMapNode *FragMapManager::find_block(uint64 ptr, FragMapNode *node)
+{
+    if (node == NULL)
+        return(NULL);
+
+    if (ptr == node->ptr)  // found?
+        return(node);
+
+    // recursive!
+    FragMapNode *child = find_block(ptr, node->left);
+    if (child != NULL)
+        return(child);
+
+    return(find_block(ptr, node->right));   // recursive!
+} // FragMapManager::find_block
+
+
+void FragMapManager::remove_block(uint64 ptr)
+{
+    if (ptr == 0x00000000)
+        return;  // don't delete static root.
+
+    FragMapNode *node = find_block(ptr);
+
+    // "Removing" a node means flagging it as "dead".
+    //  This is because adjusting the tree is complex and nasty,
+    //  and it's likely a future allocation will reuse this address
+    //  anyhow. This also lets us consider double-free()s, etc.
+    // We can cull the dead nodes when rebalancing the tree, and
+    //  put them into an allocation pool for reuse.
+    if (node)
+        node->dead = true;
+} // FragMapManager::remove_block
+
+
+void FragMapManager::add_malloc(size_t size, uint64 rc)
+{
+    insert_block(rc, size);
+} // FragMapManager::add_malloc
+
+
+void FragMapManager::add_realloc(uint64 ptr, size_t size, uint64 rc)
+{
+    // !!! FIXME: Is realloc(NULL, 0) illegal?
+
+    // !!! FIXME: Don't remove and reinsert if ptr == rc && size > 0...
+    if (ptr)
+        remove_block(ptr);
+
+    if (size)
+        insert_block(rc, size);
+} // FragMapManager::add_realloc
+
+
+void FragMapManager::add_memalign(size_t b, size_t a, uint64 rc)
+{
+    insert_block(rc, a);
+} // FragMapManager::add_memalign
+
+
+void FragMapManager::add_free(uint64 ptr)
+{
+    remove_block(ptr);
+} // FragMapManager::add_free
+
+
+void FragMapManager::done_adding(ProgressNotify &pn)
+{
+    // !!! FIXME: flatten out final fragmap?
+} // FragMapManager::done_adding
+
 
 
 void DumpFile::destruct(void)
@@ -174,18 +298,22 @@ inline void DumpFile::read_timestamp(tick_t &t) throw (const char *)
     read_ui32(t);
 } // DumpFile::read_timestamp
 
-inline void DumpFile::read_callstack() throw (const char *)
+inline void DumpFile::read_callstack(CallstackManager::callstackid &id)
+    throw (const char *)
 {
-    uint64 buf[1024];
+    uint64 *buf = NULL;
     uint32 count;
 
     read_ui32(count);
-
-    // !!! FIXME:
-    if (count >= 1024)
-        throw("Buffer overflow");
     if (count)
-        read_block(buf, count * sizeofptr);
+    {
+        buf = (uint64 *) alloca(sizeof (uint64)/*sizeofptr*/ * count);
+//        read_block(buf, count * sizeofptr);
+        for (uint32 i = 0; i < count; i++)
+            read_ptr(buf[i]);
+    } // if
+
+    id = callstackManager.add(buf, count);
 } // read_callstack
 
 inline void DumpFile::read_asciz(char *&str) throw (const char *)
@@ -208,18 +336,32 @@ inline void DumpFile::read_asciz(char *&str) throw (const char *)
 } // read_asciz
 
 
-DumpFile::DumpFile(const char *fname, DumpFileProgress dfp) throw (const char *)
-    : id(NULL),
-      fname(NULL),
-      total_operations(0),
-      operations(NULL),
-      io(NULL)
+DumpFile::DumpFile(const char *fn, ProgressNotify &pn) throw (const char *)
 {
+    parse(fn, pn);
+} // DumpFile constructor
+
+DumpFile::DumpFile(const char *fn) throw (const char *)
+{
+    ProgressNotifyDummy pnd;
+    parse(fn, pnd);
+} // DumpFile constructor
+
+
+void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
+{
+    // set sane initial state...
+    fname = NULL;
+    id = NULL;
+    total_operations = 0;
+    operations = NULL;
+    io = NULL;
+
     platform_byteorder = is_bigendian();
 
     try
     {
-        io = fopen(fname, "rb");
+        io = fopen(fn, "rb");
         if (io == NULL)
             throw ((const char *) strerror(errno));
 
@@ -270,37 +412,37 @@ DumpFile::DumpFile(const char *fname, DumpFileProgress dfp) throw (const char *)
                 switch (optype)
                 {
                     case DUMPFILE_OP_MALLOC:
-//printf("malloc\n");
+                        //printf("malloc\n");
                         read_sizet(op->op_malloc.size);
                         read_ptr(op->op_malloc.retval);
                         break;
 
                     case DUMPFILE_OP_REALLOC:
-//printf("realloc\n");
+                        //printf("realloc\n");
                         read_ptr(op->op_realloc.ptr);
                         read_sizet(op->op_realloc.size);
                         read_ptr(op->op_realloc.retval);
                         break;
 
                     case DUMPFILE_OP_MEMALIGN:
-//printf("memalign\n");
+                        //printf("memalign\n");
                         read_sizet(op->op_memalign.boundary);
                         read_sizet(op->op_memalign.size);
                         read_ptr(op->op_memalign.retval);
                         break;
 
                     case DUMPFILE_OP_FREE:
-//printf("free\n");
+                        //printf("free\n");
                         read_sizet(op->op_free.ptr);
                         break;
 
                     default:
-printf("bogus opcode: %d\n", (int) optype);
+                        //fprintf(stderr, "bogus opcode: %d\n", (int) optype);
                         bogus_data = true;
                         break;
                 } // switch
 
-                read_callstack();
+                read_callstack(op->callstack);
             } // try
 
             catch (const char *e)  // half-written records are possible!
@@ -313,21 +455,18 @@ printf("bogus opcode: %d\n", (int) optype);
             prevop = op;
             total_operations++;
 
-            if (dfp)
-            {
-                dfp( "Parsing raw data",
-                     (int) ((((double) ftell(io)) / fsize) * 100.0) );
-            } // if
+            pn.update( "Parsing raw data",
+                       (int) ((((double) ftell(io)) / fsize) * 100.0) );
         } // while
 
-        callstacks.done_adding(dfp);
+        callstackManager.done_adding(pn);
 
         if (op != NULL)
             op->next = NULL;
 
         op = dummyop.next;
         operations = new DumpFileOperation*[total_operations];
-        for (size_t i; i < total_operations; i++)
+        for (size_t i = 0; i < total_operations; i++)
         {
             operations[i] = op;
             op = op->next;
@@ -348,7 +487,7 @@ printf("bogus opcode: %d\n", (int) optype);
         fclose(io);
         io = NULL;
     } // if
-} // Constructor
+} // DumpFile::construct
 
 // end of dumpfile.cpp ...
 

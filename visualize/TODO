@@ -1,0 +1,9 @@
+
+- BadBehaviourManager
+- Flatten fragmaps to snapshots.
+- Rebalance fragmap tree.
+- hook up fragmaps to dumpfile parser.
+- move recent matches in callstack nodes to front of list...
+
+// end of TODO ...
+
