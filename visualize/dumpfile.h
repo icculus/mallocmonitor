@@ -202,13 +202,28 @@ public:
 };
 
 /*
+ * Allocates nodes, and pools them for reuse. NOT THREAD SAFE.
+ */
+class FragMapNodePool
+{
+public:
+    static inline FragMapNode *get(dumpptr ptr, size_t size);
+    static inline void put(FragMapNode *node);
+    static void putlist(FragMapNode *node);
+    static void flush();
+    static FragMapNode *freepool;
+};
+
+/*
  * This is used internally by the FragMapManager to keep track of created
  *  snapshots.
  */
 class FragMapSnapshot
 {
 public:
-    FragMapNode *nodes;
+    FragMapSnapshot(uint32 nodecount, size_t opidx);
+    ~FragMapSnapshot();
+    FragMapNode **nodes;
     size_t total_nodes;
     size_t operation_index;
 };
@@ -216,26 +231,12 @@ public:
 
 /*
  * The FragMapManager keeps an ongoing working set of the memory space,
- *  which is just a B-Tree...this lets us insert and remove allocated blocks
- *  into the FragMap with pretty good efficiency, and makes it trivial to
- *  flatten the tree into a sorted linked list quickly when making
- *  snapshots. A hashtable might be faster for insertion and lookup, in this
- *  case, but the free sorting we get when flattening the tree is pretty much
- *  unbeatable.
+ *  stored as a hashtable...this lets us insert and remove allocated blocks
+ *  into the FragMap with really good efficiency. We flatten and sort the
+ *  hashtable when creating snapshots.
  *
- * The typical application usage patterns for memory seem to suggest that
- *  a large portion of the allocations are either extremely short lived
- *  (allocate scratch memory, work in it, free it, possibly in the same
- *  function), or permanent (allocate an object at init time, delete it
- *  during process termination). This means that our tree is going to
- *  quickly become lopsided, with a few allocations to the left, and
- *  most to the right. It is worth rebalancing the tree every few snapshots
- *  to keep insertions and lookups fast.
- *
- * Obviously, trees aren't a good representation for the application, since
- *  they'll want the memory layout from beginning to end in a linear order,
- *  easy to iterate over, which is the entire purpose of flattening the tree
- *  at snapshot time.
+ * The app requests snapshots from the FragMapManager, which, to the app,
+ *  is just a linear linked list, sorted by the allocations' pointers.
  */
 class FragMapManager
 {
@@ -247,21 +248,24 @@ public:
     void add_memalign(DumpFileOperation *op);
     void add_free(DumpFileOperation *op);
     void done_adding(ProgressNotify &pn);
+    //FragMapNode **get_fragmap(size_t operation_index, size_t &nodecount);
 
 protected:
-    FragMapSnapshot *snapshots;
-    size_t total_snapshots;
+    FragMapSnapshot **snapshots;
+    uint32 total_snapshots;
     void insert_block(dumpptr ptr, size_t s);
     void remove_block(dumpptr ptr);
+    void create_snapshot();
 
 private:
     FragMapNode **fragmap;
+    size_t total_nodes;
+    size_t current_operation;
+    size_t snapshot_operations;
 
+    #define FRAGMAP_SNAPSHOT_THRESHOLD 1000
+    inline void increment_operations();
     static inline uint16 calculate_hash(dumpptr val);
-    static void delete_nodelist(FragMapNode *node);
-    inline FragMapNode *allocate_node(dumpptr ptr, size_t s);
-    inline void delete_node(FragMapNode *node);
-    FragMapNode *freepool;
 };
 
 

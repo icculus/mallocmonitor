@@ -121,167 +121,140 @@ CallstackManager::CallstackNode::~CallstackNode()
     } // while
 } // CallstackNode destructor
 
-#if 0
-FragMapManager::FragMapManager()
-    : snapshots(NULL), total_snapshots(0), fragmap(NULL)
+
+FragMapSnapshot::FragMapSnapshot(uint32 nodecount, size_t opidx)
+    : total_nodes(nodecount), operation_index(opidx)
 {
-} // FragMapManager constructor
+    nodes = new FragMapNode*[total_nodes];
+} // FragMapSnapshot::FragMapSnapshot
 
-FragMapManager::~FragMapManager()
+
+FragMapSnapshot::~FragMapSnapshot()
 {
-    delete fragmap;
-    delete snapshots;
-} // FragMapManager destructor
+    for (size_t i = 0; i < total_nodes; i++)
+        FragMapNodePool::put(nodes[i]);
+    delete[] nodes;
+} // FragMapSnapshot::~FragMapSnapshot
 
 
-void FragMapManager::insert_block(FragMapNode *insnode)
+FragMapNode **FragMapManager::get_fragmap(size_t op_index, size_t &nodecount)
 {
-    dumpptr ptr = insnode->ptr;
-    FragMapNode *node = fragmap;
-    FragMapNode **child = NULL;
+    return(NULL);  // !!! FIXME: write me!
+} // FragMapManager::get_fragmap
 
-    while (node)
+
+void FragMapManager::create_snapshot()
+{
+    uint32 count = 0;
+    FragMapSnapshot *snapshot;
+
+    snapshot = new FragMapSnapshot(total_nodes, current_operation);
+
+    for (int i = 0; i <= 0xFFFF; i++)
     {
-        dumpptr nodeptr = node->ptr;
-        assert(ptr != nodeptr);
-        child = (ptr < nodeptr) ? &node->left : &node->right;
-        if (*child == NULL)  // if null, then this is our insertion point!
+        FragMapNode *node = fragmap[i];
+        while (node != NULL)
         {
-            *child = insnode;
-            return;
-        } // if
+            snapshot->nodes[count++] = FragMapNodePool::get(node->ptr, node->size);
+            node = node->right;
+        } // while
+    } // for
 
-        // keep looking...
-        node = *child;
-    } // while
+    // !!! FIXME: qsort the snapshot!
 
-    // you should only be here if the fragmap is totally empty.
-    assert(fragmap == NULL);
-    fragmap = insnode;
-} // FragMapManager::insert_block
+    // !!! FIXME: realloc? yuck!
+    total_snapshots++;
+    snapshots = (FragMapSnapshot **) realloc(snapshots,
+                    total_snapshots * sizeof (FragMapSnapshot *));
+    assert(snapshots != NULL);  // !!! FIXME: lame.
+    snapshots[total_snapshots-1] = snapshot;
+} // FragMapManager::create_snapshot
 
 
-void FragMapManager::insert_block(dumpptr ptr, size_t size)
+FragMapNode *FragMapNodePool::freepool = NULL;
+
+inline void FragMapNodePool::put(FragMapNode *node)
 {
-    insert_block(new FragMapNode(ptr, size));
-} // FragMapManager::insert_block
-
-
-FragMapNode *FragMapManager::find_block(dumpptr ptr, FragMapNode *node)
-{
-    while (node)
+    if (node != NULL)
     {
-        dumpptr nodeptr = node->ptr;
-        if (ptr == nodeptr)
-            return(node);  // we have a match!
-        else
-            node = (ptr < nodeptr) ? node->left : node->right;
-    } // while
-
-    return(NULL);
-} // FragMapManager::find_block
-
-
-void FragMapManager::remove_block(dumpptr ptr)
-{
-    FragMapNode *node = fragmap;
-    FragMapNode *parent = NULL;
-
-    if ((node) && (node->ptr == ptr))  // the root node is to be removed...
-    {
-        fragmap = node->left;
-        if (node->right)
-            insert_block(node->right);
-        delete node;
-        return;
+        node->right = FragMapNodePool::freepool;
+        FragMapNodePool::freepool = node;
     } // if
+} // FragMapNodePool::put
 
-    while (node)
+
+void FragMapNodePool::putlist(FragMapNode *node)
+{
+    if (node != NULL)
     {
-        dumpptr nodeptr = node->ptr;
-        if (ptr != nodeptr)  // not our node, keep looking...
+        FragMapNode *prev = NULL;
+        while (node != NULL)
         {
-            parent = node;
-            node = (ptr < nodeptr) ? node->left : node->right;
-        } // if
+            prev = node;
+            node = node->right;
+        } // while
 
-        else  // This is the node; remove it.
-        {
-            if (ptr < parent->ptr)
-            {
-                parent->left = node->left;
-                if (node->right)
-                    insert_block(node->right);
-            } // if
-            else
-            {
-                parent->right = node->right;
-                if (node->left)
-                    insert_block(node->left);
-            } // else
-
-            delete node;
-            return;
-        } // else
-    } // while
-} // FragMapManager::remove_block
-#endif
+        prev->right = FragMapNodePool::freepool;
+        FragMapNodePool::freepool = prev;
+    } // if
+} // FragMapNodePool::putlist
 
 
-inline void FragMapManager::delete_node(FragMapNode *node)
+inline FragMapNode *FragMapNodePool::get(dumpptr ptr, size_t size)
 {
-    node->right = freepool;
-    freepool = node;
-} // FragMapManager::delete_node
-
-
-inline FragMapNode *FragMapManager::allocate_node(dumpptr ptr, size_t size)
-{
-    FragMapNode *retval = freepool;
+    FragMapNode *retval = FragMapNodePool::freepool;
     if (retval == NULL)
         retval = new FragMapNode(ptr, size);
     else
     {
-        freepool = retval->right;
+        FragMapNodePool::freepool = retval->right;
         retval->ptr = ptr;
         retval->size = size;
     } // else
 
     return(retval);
-} // FragMapManager::allocate_node
+} // FragMapNodePool::get
 
 
-void FragMapManager::delete_nodelist(FragMapNode *node)
+void FragMapNodePool::flush()
 {
-    FragMapNode *next;
+    FragMapNode *node = FragMapNodePool::freepool;
     while (node)
     {
-        next = node->right;
+        FragMapNode *next = node->right;
         delete node;
         node = next;
     } // while
-} // FragMapManager::delete_nodelist
 
+    FragMapNodePool::freepool = NULL;
+} // FragMapNodePool::flush
 
 
 FragMapManager::FragMapManager()
-    : snapshots(NULL), total_snapshots(0), fragmap(NULL), freepool(NULL)
+    : snapshots(NULL),
+      total_snapshots(0),
+      fragmap(NULL),
+      total_nodes(0),
+      current_operation(0),
+      snapshot_operations(0)
 {
     fragmap = new FragMapNode*[0xFFFF + 1];
     memset(fragmap, '\0', (0xFFFF + 1) * sizeof (FragMapNode *));
-} // FragMapManager constructor
+} // FragMapManager::FragMapManager
 
 
 FragMapManager::~FragMapManager()
 {
-    delete_nodelist(freepool);
+    for (size_t i = 0; i <= 0xFFFF; i++)
+        FragMapNodePool::putlist(fragmap[i]);
 
-    for (size_t i = 0; i < 0xFFFF; i++)
-        delete_nodelist(fragmap[i]);
+    for (size_t i = 0; i < total_snapshots; i++)
+        delete snapshots[i];
 
+    free(snapshots); // !!! FIXME: allocated with realloc()...
     delete[] fragmap;
-    delete snapshots;
-} // FragMapManager destructor
+    FragMapNodePool::flush();
+} // FragMapManager::~FragMapManager
 
 
 inline uint16 FragMapManager::calculate_hash(dumpptr ptr)
@@ -305,9 +278,11 @@ inline uint16 FragMapManager::calculate_hash(dumpptr ptr)
 void FragMapManager::insert_block(dumpptr ptr, size_t size)
 {
     uint16 hashval = calculate_hash(ptr);
-    FragMapNode *node = allocate_node(ptr, size);
+    // !!! FIXME: check for dupes before inserting?
+    FragMapNode *node = FragMapNodePool::get(ptr, size);
     node->right = fragmap[hashval];  // FIXME: do this in the constructor.
     fragmap[hashval] = node;
+    total_nodes++;
 } // FragMapManager::insert_block
 
 
@@ -328,7 +303,8 @@ void FragMapManager::remove_block(dumpptr ptr)
             prev->right = node->right;
         else
             fragmap[hashval] = node->right;
-        delete_node(node);
+        FragMapNodePool::put(node);
+        total_nodes--;
     } // if
 } // FragMapManager::remove_block
 
@@ -336,6 +312,7 @@ void FragMapManager::remove_block(dumpptr ptr)
 void FragMapManager::add_malloc(DumpFileOperation *op)
 {
     insert_block(op->op_malloc.retval, op->op_malloc.size);
+    increment_operations();
 } // FragMapManager::add_malloc
 
 
@@ -349,26 +326,31 @@ void FragMapManager::add_realloc(DumpFileOperation *op)
 
     if (op->op_realloc.size)
         insert_block(op->op_realloc.retval, op->op_realloc.size);
+
+    increment_operations();
 } // FragMapManager::add_realloc
 
 
 void FragMapManager::add_memalign(DumpFileOperation *op)
 {
     insert_block(op->op_memalign.retval, op->op_memalign.size);
+    increment_operations();
 } // FragMapManager::add_memalign
 
 
 void FragMapManager::add_free(DumpFileOperation *op)
 {
     remove_block(op->op_free.ptr);
+    increment_operations();
 } // FragMapManager::add_free
 
 
 void FragMapManager::done_adding(ProgressNotify &pn)
 {
-    // !!! FIXME: flatten out final fragmap?
+    // flatten out final fragmap...
+    create_snapshot();
 
-#if 1  // PROFILING_STATISTICS
+#if 0  // PROFILING_STATISTICS
     int deepest = 0;
     int totalnodes = 0;
 
@@ -376,7 +358,7 @@ void FragMapManager::done_adding(ProgressNotify &pn)
     int depths[MAXDEPTHS];
     memset(depths, '\0', sizeof (depths));
 
-    for (size_t i = 0; i < 0xFFFF; i++)
+    for (size_t i = 0; i <= 0xFFFF; i++)
     {
         FragMapNode *node = fragmap[i];
         int depth = 0;
@@ -404,6 +386,16 @@ void FragMapManager::done_adding(ProgressNotify &pn)
 #endif
 } // FragMapManager::done_adding
 
+
+inline void FragMapManager::increment_operations()
+{
+    current_operation++;
+    if (++snapshot_operations >= FRAGMAP_SNAPSHOT_THRESHOLD)
+    {
+        create_snapshot();
+        snapshot_operations = 0;
+    } // if
+} // FragMapManager::increment_operations
 
 
 void DumpFile::destruct(void)

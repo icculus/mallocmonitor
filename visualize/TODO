@@ -1,14 +1,11 @@
 
 - BadBehaviourManager
-- Flatten fragmaps to snapshots.
-- Rebalance fragmap tree.
-- hook up fragmaps to dumpfile parser.
+- Sort fragmap snapshots during creation.
+- Fulfill fragmap requests from app.
 - write Fragmap node/snapshot/manager destruction
-- Use native word size, throw error if sizeofptr != sizeof (void *) for now.
 - Hook up byteswapping...
 - const correctness
-- FragMapManager is TOO SLOW...maybe b-trees aren't good for this? Need to
-  implement rebalancing and recycling of dead nodes to be sure, though...
+- Don't use size_t; use, uh, dumpsizet or something.
 
 // end of TODO ...
 
