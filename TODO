@@ -1,0 +1,5 @@
+
+- The "[file]" hostname is a bit of a hack.
+- The file/socket seperation is a bit messy.
+- Pause/Unpause memory pattern logging programmatically.
+- Must get binary's location in the filesystem.

@@ -4,29 +4,49 @@
  * Details on this hackery are in the glibc manual:
  *   http://www.delorie.com/gnu/docs/glibc/libc_34.html
  *
- * Build this:
- *  gcc -Wall -O0 -g -shared -o malloc_hook_glibc.so malloc_hook_glibc.c
+ * This will Just Work on a glibc-based system like GNU/Linux if you
+ *  statically link this code and malloc_monitor_client.c into your program.
  *
- * Run a program:
- *  LD_PRELOAD=./malloc_hook_glibc.so ./myprogram
+ * You can also use this on binaries you don't have source to. Build this
+ *  as a shared library (as the Makefile does), and run that program as such:
+ *
+ *   LD_PRELOAD=./malloc_monitor.so ./binary_only_program
+ *
+ * Please note that you still need debugging symbols in that binary for
+ *  this to be generally useful.
+ *
+ * Written by Ryan C. Gordon (icculus@icculus.org)
+ *
+ * Please see the file LICENSE in the source's root directory.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <malloc.h>
+#include <stdlib.h>  /* NULL, size_t definitions, etc. */
+#include <malloc.h>  /* glibc allocation hook interface. */
 
-#include "malloc_monitor.h"
+#include "malloc_monitor.h"  /* talk to the monitoring daemon. */
 
-/* !!! FIXME: don't use void * ... */
+/*
+ * Store original glibc allocation functions here so we can swap
+ *  our hooks in and out as needed.
+ *
+ * !!! FIXME: don't use void * ...
+ *
+ */
 static void *glibc_malloc_hook = NULL;
 static void *glibc_realloc_hook = NULL;
 static void *glibc_memalign_hook = NULL;
 static void *glibc_free_hook = NULL;
 
-static inline save_glibc_hooks(void);
-static inline set_glibc_hooks(void);
-static inline set_override_hooks(void);
+/* convenience functions for setting the hooks... */
+static inline void save_glibc_hooks(void);
+static inline void set_glibc_hooks(void);
+static inline void set_override_hooks(void);
+
+
+/*
+ * Our overriding hooks...they call through to the original C runtime
+ *  implementations and report to the monitoring daemon.
+ */
 
 static void *override_malloc_hook(size_t s, const void *caller)
 {
@@ -83,6 +103,11 @@ static void override_free_hook(void *ptr, const void *caller)
 } /* override_free_hook */
 
 
+
+/*
+ * Convenience functions for swapping the hooks around...
+ */
+
 /*
  * Save a copy of the original allocation hooks, so we can call into them
  *  from our overriding functions. It's possible that glibc might change
@@ -90,7 +115,7 @@ static void override_free_hook(void *ptr, const void *caller)
  *  to suggest), so we update them whenever we finish calling into the
  *  the originals.
  */
-static inline save_glibc_hooks(void)
+static inline void save_glibc_hooks(void)
 {
     glibc_malloc_hook = __malloc_hook;
     glibc_realloc_hook = __realloc_hook;
@@ -104,7 +129,7 @@ static inline save_glibc_hooks(void)
  *  it's safer to let them have complete control over the subsystem, which
  *  also makes our logging saner, too.
  */
-static inline set_glibc_hooks(void)
+static inline void set_glibc_hooks(void)
 {
     __malloc_hook = glibc_malloc_hook;
     __realloc_hook = glibc_realloc_hook;
@@ -119,7 +144,7 @@ static inline set_glibc_hooks(void)
  *  may call glibc functions, too). This sets us up for the next calls from
  *  the application.
  */
-static inline set_override_hooks(void)
+static inline void set_override_hooks(void)
 {
     __malloc_hook = override_malloc_hook;
     __realloc_hook = override_realloc_hook;
@@ -127,6 +152,11 @@ static inline set_override_hooks(void)
     __free_hook = override_free_hook;
 } /* set_override_hooks */
 
+
+
+/*
+ * The Hook Of All Hooks...how we get in there in the first place.
+ */
 
 /*
  * glibc will call this when the malloc subsystem is initializing, giving
@@ -141,12 +171,10 @@ static void override_init_hook(void)
 
 
 /*
- * The Hook Of All Hooks:
- *
  * __malloc_initialize_hook is apparently a "weak variable", so you can
  *  define and assign it here even though it's in glibc, too. This lets
  *  us hook into malloc as soon as the runtime initializes, and before
- *  main() is called.
+ *  main() is called. Basically, this whole trick depends on this.
  */
 void (*__malloc_initialize_hook)(void) = override_init_hook;
 
