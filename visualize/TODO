@@ -3,6 +3,8 @@
 - Flatten fragmaps to snapshots.
 - Rebalance fragmap tree.
 - hook up fragmaps to dumpfile parser.
+- Use native word size, throw error if sizeofptr != sizeof (void *) for now.
+- Hook up byteswapping...
 
 // end of TODO ...
 
