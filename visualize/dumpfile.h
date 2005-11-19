@@ -53,10 +53,10 @@ public:
     CallstackManager() : total_frames(0), unique_frames(0) {}
     callstackid add(dumpptr *ptrs, size_t framecount);
     void done_adding(ProgressNotify &pn);
-    size_t framecount(callstackid id);
-    void get(callstackid id, dumpptr *ptrs);
-    size_t getTotalCallstackFrames() { return(total_frames); }
-    size_t getUniqueCallstackFrames() { return(unique_frames); }
+    size_t framecount(callstackid id) const;
+    void get(callstackid id, dumpptr *ptrs) const;
+    size_t getTotalCallstackFrames() const { return(total_frames); }
+    size_t getUniqueCallstackFrames() const { return(unique_frames); }
 
 protected:
     /*
@@ -108,9 +108,9 @@ class DumpFile;
 class DumpFileOperation
 {
 public:
-    dumpfile_operation_t getOperationType() { return optype; }
-    tick_t getTimestamp() { return timestamp; }
-    CallstackManager::callstackid getCallstackId() { return callstack; }
+    dumpfile_operation_t getOperationType() const { return optype; }
+    tick_t getTimestamp() const { return timestamp; }
+    CallstackManager::callstackid getCallstackId() const { return callstack; }
 
     union  /* read only! */
     {
@@ -287,15 +287,15 @@ public:
     DumpFile(const char *fname, ProgressNotify &pn) throw (const char *);
     DumpFile(const char *fname) throw (const char *);
     ~DumpFile();
-    uint8 getFormatVersion() { return protocol_version; }
-    uint8 platformIsBigendian() { return (byte_order == 1); }
-    uint8 platformIsLittleendian() { return (byte_order == 0); }
-    uint8 getSizeofPtr() { return sizeofptr; }
-    const char *getId() { return id; }
-    const char *getBinaryFilename() { return fname; }
-    uint32 getProcessId() { return pid; }
-    uint32 getOperationCount() { return total_operations; }
-    DumpFileOperation *getOperation(size_t idx) { return operations[idx]; }
+    uint8 getFormatVersion() const { return protocol_version; }
+    uint8 platformIsBigendian() const { return (byte_order == 1); }
+    uint8 platformIsLittleendian() const { return (byte_order == 0); }
+    uint8 getSizeofPtr() const { return sizeofptr; }
+    const char *getId() const { return id; }
+    const char *getBinaryFilename() const { return fname; }
+    uint32 getProcessId() const { return pid; }
+    uint32 getOperationCount() const { return total_operations; }
+    DumpFileOperation *getOperation(size_t idx) const { return operations[idx]; }
     CallstackManager callstackManager;
     FragMapManager fragmapManager;
 

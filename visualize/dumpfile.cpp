@@ -129,13 +129,13 @@ void CallstackManager::done_adding(ProgressNotify &pn)
 } // CallstackManager::done_adding
 
 
-size_t CallstackManager::framecount(callstackid id)
+size_t CallstackManager::framecount(callstackid id) const
 {
     return( ((CallstackNode *) id)->depth);
 } // CallstackManager::framecount
 
 
-void CallstackManager::get(callstackid id, dumpptr *ptrs)
+void CallstackManager::get(callstackid id, dumpptr *ptrs) const
 {
     CallstackNode *node = (CallstackNode *) id;
     size_t depth = node->depth;
