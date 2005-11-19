@@ -373,17 +373,6 @@ sub do_realloc_operation {
     return 1;
 }
 
-sub do_memalign_operation {
-    debug(' + MEMALIGN operation.');
-    my $t = read_ticks(); return 0 if (not defined $t);
-    my $b = read_sizet(); return 0 if (not defined $b);
-    my $s = read_sizet(); return 0 if (not defined $s);
-    my $rc = read_ptr(); return 0 if (not defined $rc);
-    my $c = read_callstack(); return 0 if (not defined $c);
-    # !!! FIXME: do something.
-    return 1;
-}
-
 sub do_free_operation {
     debug(' + FREE operation.');
     my $t = read_ticks(); return 0 if (not defined $t);
@@ -401,7 +390,6 @@ sub do_operation {
     return do_goodbye_operation() if ($op == MONITOR_OP_GOODBYE);
     return do_malloc_operation() if ($op == MONITOR_OP_MALLOC);
     return do_realloc_operation() if ($op == MONITOR_OP_REALLOC);
-    return do_memalign_operation() if ($op == MONITOR_OP_MEMALIGN);
     return do_free_operation() if ($op == MONITOR_OP_FREE);
 
     debug("Unknown operation $op");

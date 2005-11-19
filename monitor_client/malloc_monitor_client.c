@@ -534,19 +534,6 @@ int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc)
 } /* MALLOCMONITOR_put_realloc */
 
 
-int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc)
-{
-    if (!verify_connection()) return(0);
-    if (!daemon_write_operation(MONITOR_OP_MEMALIGN)) return(0);
-    if (!daemon_write_timestamp()) return(0);
-    if (!daemon_write_sizet(b)) return(0);
-    if (!daemon_write_sizet(s)) return(0);
-    if (!daemon_write_ptr(rc)) return(0);
-    if (!daemon_write_callstack()) return(0);
-    return(1);
-} /* MALLOCMONITOR_put_memalign */
-
-
 int MALLOCMONITOR_put_free(void *p)
 {
     if (!verify_connection()) return(0);

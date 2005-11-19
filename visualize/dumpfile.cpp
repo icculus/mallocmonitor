@@ -198,7 +198,6 @@ void FragMapManager::walk_fragmap(DumpFile *df, size_t startop, size_t endop)
         {
             case DUMPFILE_OP_MALLOC: hash_malloc(op); break;
             case DUMPFILE_OP_REALLOC: hash_realloc(op); break;
-            case DUMPFILE_OP_MEMALIGN: hash_memalign(op); break;
             case DUMPFILE_OP_FREE: hash_free(op); break;
             default: assert(0 && "unknown dumpfile operation!"); break;
         } // switch
@@ -528,12 +527,6 @@ inline void FragMapManager::hash_realloc(DumpFileOperation *op)
 } // FragMapManager::hash_realloc
 
 
-inline void FragMapManager::hash_memalign(DumpFileOperation *op)
-{
-    insert_block(op->op_memalign.retval, op->op_memalign.size);
-} // FragMapManager::hash_memalign
-
-
 inline void FragMapManager::hash_free(DumpFileOperation *op)
 {
     remove_block(op->op_free.ptr);
@@ -553,13 +546,6 @@ void FragMapManager::add_realloc(DumpFileOperation *op)
     hash_realloc(op);
     increment_operations();
 } // FragMapManager::add_realloc
-
-
-void FragMapManager::add_memalign(DumpFileOperation *op)
-{
-    hash_memalign(op);
-    increment_operations();
-} // FragMapManager::add_memalign
 
 
 void FragMapManager::add_free(DumpFileOperation *op)
@@ -836,14 +822,6 @@ void DumpFile::parse(const char *fn, ProgressNotify &pn) throw (const char *)
                         read_sizet(op->op_realloc.size);
                         read_ptr(op->op_realloc.retval);
                         fragmapManager.add_realloc(op);
-                        break;
-
-                    case DUMPFILE_OP_MEMALIGN:
-                        //printf("memalign\n");
-                        read_sizet(op->op_memalign.boundary);
-                        read_sizet(op->op_memalign.size);
-                        read_ptr(op->op_memalign.retval);
-                        fragmapManager.add_memalign(op);
                         break;
 
                     case DUMPFILE_OP_FREE:

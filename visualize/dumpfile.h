@@ -129,13 +129,6 @@ public:
 
         struct
         {
-            dumpptr boundary;
-            dumpptr size;
-            dumpptr retval;
-        } op_memalign;
-
-        struct
-        {
             dumpptr ptr;
         } op_free;
     };
@@ -245,7 +238,6 @@ public:
     ~FragMapManager();
     void add_malloc(DumpFileOperation *op);
     void add_realloc(DumpFileOperation *op);
-    void add_memalign(DumpFileOperation *op);
     void add_free(DumpFileOperation *op);
     void done_adding(ProgressNotify &pn);
     FragMapNode **get_fragmap(DumpFile *df, size_t operation_index, size_t &nodecount);
@@ -263,7 +255,6 @@ protected:
     inline void hash_snapshot(FragMapSnapshot *snapshot);
     inline void hash_malloc(DumpFileOperation *op);
     inline void hash_realloc(DumpFileOperation *op);
-    inline void hash_memalign(DumpFileOperation *op);
     inline void hash_free(DumpFileOperation *op);
     void walk_fragmap(DumpFile *df, size_t startop, size_t endop);
 

@@ -128,17 +128,6 @@ int MALLOCMONITOR_put_malloc(size_t s, void *rc);
 int MALLOCMONITOR_put_realloc(void *p, size_t s, void *rc);
 
 /*
- * Tell the monitoring daemon that the application just called memalign()
- *  or some variation, like posix_memalign() or valloc().
- *
- *     params : b == multiple of boundary that app wants to align on.
- *              s == number of bytes app wanted to allocate.
- *              rc == what C runtime's memalign() returned.
- *    returns : non-zero if reported to monitor daemon, zero on failure.
- */
-int MALLOCMONITOR_put_memalign(size_t b, size_t s, void *rc);
-
-/*
  * Tell the monitoring daemon that the application just called free()
  *
  *     params : p == pointer that was free()'d.

@@ -85,7 +85,7 @@ static void *override_memalign_hook(size_t a, size_t s, const void *caller)
     retval = memalign(a, s);  /* call glibc version. */
     save_glibc_hooks();  /* update in case glibc changed them. */
 
-    if (MALLOCMONITOR_put_memalign(a, s, retval))
+    if (MALLOCMONITOR_put_malloc(a, s, retval))
         set_override_hooks(); /* only restore hooks if daemon is listening */
 
     return(retval);

@@ -85,13 +85,6 @@ int main(int argc, char **argv)
                                (int) op->op_realloc.retval);
                         break;
 
-                    case DUMPFILE_OP_MEMALIGN:
-                        printf("memalign(%d, %d), returned 0x%X\n",
-                               (int) op->op_memalign.boundary,
-                               (int) op->op_memalign.size,
-                               (int) op->op_memalign.retval);
-                        break;
-
                     case DUMPFILE_OP_FREE:
                         printf("free(0x%X)\n",
                                (int) op->op_free.ptr);
